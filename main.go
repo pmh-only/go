@@ -244,6 +244,14 @@ var (
     }
     tr:hover .link-copy { opacity: 1; }
     .link-copy:hover { background: #e2e8f0; }
+    .code-row { display: flex; align-items: center; gap: .3rem; margin-bottom: .25rem; }
+    .code-label { font-family: monospace; font-size: .82rem; font-weight: 600; color: #4a5568; }
+    .code-edit-row { display: flex; align-items: center; gap: .3rem; margin-bottom: .25rem; }
+    .code-edit-input {
+      font-family: monospace; font-size: .82rem;
+      padding: .15rem .4rem; border: 1.5px solid #667eea;
+      border-radius: 5px; outline: none; width: 110px;
+    }
 
     /* shared tag + row-toggle styles */
     .url-tag, .row-toggle {
@@ -418,12 +426,16 @@ var (
         {{range .URLs}}
         <tr id="row-{{.Code}}">
           <td class="td-links">
+            <div class="code-row" id="code-display-{{.Code}}">
+              <span class="code-label">{{.Code}}</span>
+              <button class="link-copy" style="opacity:0" onclick="startEditCode('{{.Code}}')">✎</button>
+            </div>
             <div class="link-line">
-              <a {{if .PublicEnabled}}href="/{{.Code}}" target="_blank"{{else}}class="disabled"{{end}}>{{$.Base}}/{{.Code}}</a>
+              <a {{if .PublicEnabled}}href="/{{.Code}}" target="_blank"{{else}}class="disabled"{{end}} id="pub-link-{{.Code}}">{{$.Base}}/{{.Code}}</a>
               <button class="link-copy" onclick="copyRaw('{{$.Base}}/{{.Code}}',this)">Copy</button>
             </div>
             <div class="link-line">
-              <a {{if not .InternalEnabled}}class="disabled"{{end}}>go/{{.Code}}</a>
+              <a {{if not .InternalEnabled}}class="disabled"{{end}} id="int-link-{{.Code}}">go/{{.Code}}</a>
               <button class="link-copy" onclick="copyRaw('go/{{.Code}}',this)">Copy</button>
             </div>
           </td>
@@ -518,6 +530,66 @@ function copyText(id, btn) {
     btn.textContent = 'Copied!';
     setTimeout(() => btn.textContent = 'Copy', 2000);
   });
+}
+
+/* ── edit code (ID) ── */
+function startEditCode(code) {
+  const disp = document.getElementById('code-display-' + code);
+  disp.style.display = 'none';
+  const row = document.getElementById('row-' + code);
+  const editDiv = document.createElement('div');
+  editDiv.className = 'code-edit-row';
+  editDiv.id = 'code-edit-' + code;
+  editDiv.innerHTML =
+    '<input class="code-edit-input" id="code-input-' + code + '" value="' + code + '">' +
+    '<button class="link-copy" style="opacity:1;background:#c6f6d5;color:#276749" onclick="saveEditCode(\'' + code + '\')">✓</button>' +
+    '<button class="link-copy" style="opacity:1" onclick="cancelEditCode(\'' + code + '\')">✕</button>';
+  disp.parentNode.insertBefore(editDiv, disp);
+  const inp = document.getElementById('code-input-' + code);
+  inp.focus(); inp.select();
+  inp.addEventListener('keydown', e => {
+    if (e.key === 'Enter')  saveEditCode(code);
+    if (e.key === 'Escape') cancelEditCode(code);
+  });
+}
+
+async function saveEditCode(oldCode) {
+  const newCode = document.getElementById('code-input-' + oldCode).value.trim();
+  if (!newCode || newCode === oldCode) { cancelEditCode(oldCode); return; }
+  const res = await fetch('/urls/' + oldCode, {
+    method: 'PATCH',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({code: newCode}),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    document.getElementById('code-input-' + oldCode).style.borderColor = '#fc8181';
+    document.getElementById('code-input-' + oldCode).title = data.error || 'Error';
+    return;
+  }
+  // Update DOM in-place
+  const row = document.getElementById('row-' + oldCode);
+  row.id = 'row-' + newCode;
+  document.getElementById('code-edit-' + oldCode).remove();
+  const disp = document.getElementById('code-display-' + oldCode);
+  disp.id = 'code-display-' + newCode;
+  disp.querySelector('.code-label').textContent = newCode;
+  disp.style.display = '';
+  // Update link text and hrefs
+  const pb  = document.getElementById('pub-link-' + oldCode);
+  const ib  = document.getElementById('int-link-' + oldCode);
+  if (pb) { pb.id = 'pub-link-' + newCode; pb.textContent = pb.textContent.replace(oldCode, newCode); if (pb.href) pb.href = '/' + newCode; }
+  if (ib) { ib.id = 'int-link-' + newCode; ib.textContent = ib.textContent.replace(oldCode, newCode); }
+  // Update action buttons' onclick references
+  row.querySelectorAll('[onclick]').forEach(el => {
+    el.setAttribute('onclick', el.getAttribute('onclick').replaceAll("'" + oldCode + "'", "'" + newCode + "'"));
+  });
+}
+
+function cancelEditCode(code) {
+  const editDiv = document.getElementById('code-edit-' + code);
+  if (editDiv) editDiv.remove();
+  document.getElementById('code-display-' + code).style.display = '';
 }
 
 function copyRaw(text, btn) {
@@ -991,6 +1063,7 @@ func urlsHandler(w http.ResponseWriter, r *http.Request) {
 
 	case http.MethodPatch:
 		var body struct {
+			NewCode         *string `json:"code"`
 			LongURL         *string `json:"long_url"`
 			PublicEnabled   *bool   `json:"public_enabled"`
 			InternalEnabled *bool   `json:"internal_enabled"`
@@ -1025,6 +1098,53 @@ func urlsHandler(w http.ResponseWriter, r *http.Request) {
 
 		if body.LongURL != nil && strings.TrimSpace(*body.LongURL) == "" {
 			jsonError(w, http.StatusBadRequest, "long_url cannot be empty")
+			return
+		}
+
+		// Rename code: insert with new code, delete old (code is PK)
+		if body.NewCode != nil {
+			newCode := strings.TrimSpace(*body.NewCode)
+			if !validCode.MatchString(newCode) {
+				jsonError(w, http.StatusBadRequest, "code must be 1–32 chars: letters, numbers, hyphens, underscores")
+				return
+			}
+			tx, err := db.Begin()
+			if err != nil {
+				jsonError(w, http.StatusInternalServerError, "database error")
+				return
+			}
+			defer tx.Rollback()
+			lu := rec.LongURL
+			if body.LongURL != nil {
+				lu = *body.LongURL
+			}
+			pub, int_ := 0, 0
+			if nextPub {
+				pub = 1
+			}
+			if nextInt {
+				int_ = 1
+			}
+			if _, err := tx.Exec(
+				"INSERT INTO urls (code, long_url, public_enabled, internal_enabled, created_at) SELECT ?, ?, ?, ?, created_at FROM urls WHERE code = ?",
+				newCode, lu, pub, int_, code,
+			); err != nil {
+				if strings.Contains(err.Error(), "UNIQUE constraint failed") {
+					jsonError(w, http.StatusConflict, fmt.Sprintf("code '%s' is already taken", newCode))
+				} else {
+					jsonError(w, http.StatusInternalServerError, "database error")
+				}
+				return
+			}
+			if _, err := tx.Exec("DELETE FROM urls WHERE code = ?", code); err != nil {
+				jsonError(w, http.StatusInternalServerError, "database error")
+				return
+			}
+			if err := tx.Commit(); err != nil {
+				jsonError(w, http.StatusInternalServerError, "database error")
+				return
+			}
+			w.WriteHeader(http.StatusNoContent)
 			return
 		}
 
