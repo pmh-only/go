@@ -233,8 +233,17 @@ var (
     td.td-vis { white-space: nowrap; }
 
     .link-line { display: flex; align-items: center; gap: .3rem; margin-bottom: .18rem; }
-    .link-line a { color: #2b6cb0; font-size: .82rem; }
+    .link-line a { color: #2b6cb0; font-size: .82rem; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .link-line a.disabled { color: #a0aec0; text-decoration: line-through; pointer-events: none; }
+    .link-copy {
+      flex-shrink: 0;
+      padding: .1rem .4rem; font-size: .7rem;
+      background: #edf2f7; color: #718096;
+      border-radius: 4px; border: none; cursor: pointer;
+      opacity: 0; transition: opacity .15s;
+    }
+    tr:hover .link-copy { opacity: 1; }
+    .link-copy:hover { background: #e2e8f0; }
 
     /* shared tag + row-toggle styles */
     .url-tag, .row-toggle {
@@ -411,9 +420,11 @@ var (
           <td class="td-links">
             <div class="link-line">
               <a {{if .PublicEnabled}}href="/{{.Code}}" target="_blank"{{else}}class="disabled"{{end}}>{{$.Base}}/{{.Code}}</a>
+              <button class="link-copy" onclick="copyRaw('{{$.Base}}/{{.Code}}',this)">Copy</button>
             </div>
             <div class="link-line">
               <a {{if not .InternalEnabled}}class="disabled"{{end}}>go/{{.Code}}</a>
+              <button class="link-copy" onclick="copyRaw('go/{{.Code}}',this)">Copy</button>
             </div>
           </td>
           <td class="td-original" id="orig-{{.Code}}">
@@ -504,6 +515,13 @@ function urlRow(id, type, text, isHref) {
 
 function copyText(id, btn) {
   navigator.clipboard.writeText(document.getElementById(id).textContent).then(() => {
+    btn.textContent = 'Copied!';
+    setTimeout(() => btn.textContent = 'Copy', 2000);
+  });
+}
+
+function copyRaw(text, btn) {
+  navigator.clipboard.writeText(text).then(() => {
     btn.textContent = 'Copied!';
     setTimeout(() => btn.textContent = 'Copy', 2000);
   });
