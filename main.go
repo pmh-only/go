@@ -44,17 +44,18 @@ type appConfig struct {
 	PublicHost   string // hostname only,  e.g. pmh.codes
 	UIHost       string // e.g. links.pmh.codes
 	InternalHost string // e.g. go
+	AliasHost    string // e.g. pmh.so (alternate public redirect host)
 }
 
 var cfg = &appConfig{}
 
-func (c *appConfig) snapshot() (publicBase, publicHost, uiHost, internalHost string) {
+func (c *appConfig) snapshot() (publicBase, publicHost, uiHost, internalHost, aliasHost string) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	return c.PublicBase, c.PublicHost, c.UIHost, c.InternalHost
+	return c.PublicBase, c.PublicHost, c.UIHost, c.InternalHost, c.AliasHost
 }
 
-func (c *appConfig) apply(publicBase, uiHost, internalHost string) {
+func (c *appConfig) apply(publicBase, uiHost, internalHost, aliasHost string) {
 	publicBase = strings.TrimRight(publicBase, "/")
 	u, _ := url.Parse(publicBase)
 	c.mu.Lock()
@@ -63,6 +64,7 @@ func (c *appConfig) apply(publicBase, uiHost, internalHost string) {
 	c.PublicHost = u.Hostname()
 	c.UIHost = uiHost
 	c.InternalHost = internalHost
+	c.AliasHost = aliasHost
 }
 
 func hostOnly(h string) string {
@@ -373,6 +375,11 @@ var (
         <input type="text" id="cfgInternalHost" value="{{.InternalHost}}" placeholder="go">
         <small style="color:#a0aec0;font-size:.74rem">Host for internal go-links</small>
       </div>
+      <div class="field">
+        <label class="field-label">Alias host <span style="color:#a0aec0;font-weight:400">(optional)</span></label>
+        <input type="text" id="cfgAliasHost" value="{{.AliasHost}}" placeholder="pmh.so">
+        <small style="color:#a0aec0;font-size:.74rem">Alternate public redirect host (e.g. a shorter domain)</small>
+      </div>
       <div style="display:flex;gap:.5rem;align-items:center">
         <button class="action-btn btn-save" style="padding:.5rem 1rem;font-size:.85rem" onclick="saveSettings()">Save</button>
         <span id="settingsFeedback" style="font-size:.8rem;color:#276749;display:none">Saved!</span>
@@ -513,6 +520,7 @@ async function saveSettings() {
     public_base:   document.getElementById('cfgPublicBase').value.trim(),
     ui_host:       document.getElementById('cfgUIHost').value.trim(),
     internal_host: document.getElementById('cfgInternalHost').value.trim(),
+    alias_host:    document.getElementById('cfgAliasHost').value.trim(),
   };
   const res = await fetch('/settings', {method:'PATCH', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)});
   const fb = document.getElementById('settingsFeedback');
@@ -625,6 +633,7 @@ func loadSettings() error {
 	publicBase := envOr("BASE_URL", "http://localhost")
 	uiHost := envOr("UI_HOST", "links.localhost")
 	internalHost := envOr("INTERNAL_HOST", "go")
+	aliasHost := envOr("ALIAS_HOST", "")
 
 	// Override with any values stored in DB
 	rows, err := db.Query("SELECT key, value FROM settings")
@@ -644,13 +653,15 @@ func loadSettings() error {
 			uiHost = v
 		case "internal_host":
 			internalHost = v
+		case "alias_host":
+			aliasHost = v
 		}
 	}
 	if err := rows.Err(); err != nil {
 		return err
 	}
 
-	cfg.apply(publicBase, uiHost, internalHost)
+	cfg.apply(publicBase, uiHost, internalHost, aliasHost)
 	return nil
 }
 
@@ -799,14 +810,15 @@ var indexTmpl = template.Must(
 
 func renderIndex(w http.ResponseWriter, r *http.Request) {
 	urls, _ := getAllURLs()
-	pb, _, uh, ih := cfg.snapshot()
+	pb, _, uh, ih, ah := cfg.snapshot()
 
 	data := struct {
 		URLs         []URLRow
 		Base         string
 		UIHost       string
 		InternalHost string
-	}{URLs: urls, Base: pb, UIHost: uh, InternalHost: ih}
+		AliasHost    string
+	}{URLs: urls, Base: pb, UIHost: uh, InternalHost: ih, AliasHost: ah}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := indexTmpl.Execute(w, data); err != nil {
@@ -883,7 +895,7 @@ func shortenHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	pb, _, _, ih := cfg.snapshot()
+	pb, _, _, ih, _ := cfg.snapshot()
 	resp := map[string]interface{}{
 		"code":             code,
 		"long_url":         longURL,
@@ -1081,12 +1093,12 @@ func internalRouter(w http.ResponseWriter, r *http.Request) {
 
 func mainHandler(w http.ResponseWriter, r *http.Request) {
 	host := hostOnly(r.Host)
-	_, ph, uh, ih := cfg.snapshot()
+	_, ph, uh, ih, ah := cfg.snapshot()
 
 	switch host {
 	case uh:
 		uiRouter(w, r)
-	case ph:
+	case ph, ah:
 		publicRouter(w, r)
 	case ih:
 		internalRouter(w, r)
@@ -1099,13 +1111,14 @@ func mainHandler(w http.ResponseWriter, r *http.Request) {
 func settingsHandler(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
-		pb, ph, uh, ih := cfg.snapshot()
+		pb, ph, uh, ih, ah := cfg.snapshot()
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{
 			"public_base":   pb,
 			"public_host":   ph,
 			"ui_host":       uh,
 			"internal_host": ih,
+			"alias_host":    ah,
 		})
 
 	case http.MethodPatch:
@@ -1113,12 +1126,13 @@ func settingsHandler(w http.ResponseWriter, r *http.Request) {
 			PublicBase   *string `json:"public_base"`
 			UIHost       *string `json:"ui_host"`
 			InternalHost *string `json:"internal_host"`
+			AliasHost    *string `json:"alias_host"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			jsonError(w, http.StatusBadRequest, "invalid JSON")
 			return
 		}
-		pb, _, uh, ih := cfg.snapshot()
+		pb, _, uh, ih, ah := cfg.snapshot()
 		if body.PublicBase != nil {
 			pb = *body.PublicBase
 		}
@@ -1128,11 +1142,15 @@ func settingsHandler(w http.ResponseWriter, r *http.Request) {
 		if body.InternalHost != nil {
 			ih = *body.InternalHost
 		}
-		cfg.apply(pb, uh, ih)
+		if body.AliasHost != nil {
+			ah = *body.AliasHost
+		}
+		cfg.apply(pb, uh, ih, ah)
 		for k, v := range map[string]string{
 			"public_base":   pb,
 			"ui_host":       uh,
 			"internal_host": ih,
+			"alias_host":    ah,
 		} {
 			if err := saveSetting(k, v); err != nil {
 				jsonError(w, http.StatusInternalServerError, "failed to save setting")
@@ -1156,8 +1174,8 @@ func main() {
 		log.Fatalf("failed to load settings: %v", err)
 	}
 
-	pb, ph, uh, ih := cfg.snapshot()
-	log.Printf("public: %s (%s)  ui: %s  internal: %s", pb, ph, uh, ih)
+	pb, ph, uh, ih, ah := cfg.snapshot()
+	log.Printf("public: %s (%s)  ui: %s  internal: %s  alias: %s", pb, ph, uh, ih, ah)
 
 	http.HandleFunc("/", mainHandler)
 	log.Fatal(http.ListenAndServe(port, nil))
