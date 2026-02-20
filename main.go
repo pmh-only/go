@@ -208,6 +208,19 @@ var (
     }
     .panel-right-header h2 { font-size: 1rem; color: #1a202c; }
     .panel-right-header .count { font-size: .8rem; color: #a0aec0; }
+    .search-wrap { position: relative; }
+    .search-wrap svg { position: absolute; left: .6rem; top: 50%; transform: translateY(-50%); pointer-events: none; color: #a0aec0; }
+    #searchInput {
+      padding: .45rem .75rem .45rem 2rem;
+      border: 1.5px solid #e2e8f0;
+      border-radius: 7px;
+      font-size: .85rem;
+      outline: none;
+      width: 220px;
+      transition: border-color .15s;
+      background: #f7fafc;
+    }
+    #searchInput:focus { border-color: #667eea; background: #fff; }
     .table-wrap { flex: 1; overflow-y: auto; }
 
     table { width: 100%; border-collapse: collapse; font-size: .84rem; }
@@ -408,8 +421,11 @@ var (
 <!-- ── Right: list ── -->
 <main class="panel-right">
   <div class="panel-right-header">
-    <h2>All URLs</h2>
-    <span class="count">{{len .URLs}} entries</span>
+    <h2>All URLs <span class="count" id="countLabel">{{len .URLs}} entries</span></h2>
+    <div class="search-wrap">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <input id="searchInput" type="search" placeholder="Search URLs…" oninput="filterRows(this.value)">
+    </div>
   </div>
   <div class="table-wrap">
     {{if .URLs}}
@@ -597,6 +613,21 @@ function copyRaw(text, btn) {
     btn.textContent = 'Copied!';
     setTimeout(() => btn.textContent = 'Copy', 2000);
   });
+}
+
+/* ── search / filter ── */
+function filterRows(q) {
+  const term = q.trim().toLowerCase();
+  const rows = document.querySelectorAll('tbody tr');
+  let visible = 0;
+  rows.forEach(row => {
+    const hay = row.textContent.toLowerCase();
+    const show = !term || hay.includes(term);
+    row.style.display = show ? '' : 'none';
+    if (show) visible++;
+  });
+  const label = document.getElementById('countLabel');
+  if (label) label.textContent = (term ? visible + ' of ' + rows.length : rows.length) + ' entries';
 }
 
 /* ── settings panel ── */
