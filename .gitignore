@@ -1,0 +1,9 @@
+# binaries
+go
+url-shortener
+go-url-shortener
+
+# database
+*.db
+*.db-shm
+*.db-wal
