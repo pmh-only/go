@@ -90,9 +90,10 @@
               <span class="code-label">{{.Code}}</span>
               <button class="link-copy" style="opacity:0" onclick="startEditCode('{{.Code}}')">✎</button>
             </div>
+            {{$pubBase := $.Base}}{{if $.AliasBase}}{{$pubBase = $.AliasBase}}{{end}}
             <div class="link-line">
-              <a {{if .PublicEnabled}}href="/{{.Code}}" target="_blank"{{else}}class="disabled"{{end}} id="pub-link-{{.Code}}">{{$.Base}}/{{.Code}}</a>
-              <button class="link-copy" onclick="copyRaw('{{$.Base}}/{{.Code}}',this)">Copy</button>
+              <a {{if .PublicEnabled}}href="{{$pubBase}}/{{.Code}}" target="_blank"{{else}}class="disabled"{{end}} id="pub-link-{{.Code}}">{{$pubBase}}/{{.Code}}</a>
+              <button class="link-copy" onclick="copyRaw('{{$pubBase}}/{{.Code}}',this)">Copy</button>
             </div>
             <div class="link-line">
               <a {{if not .InternalEnabled}}class="disabled"{{end}} id="int-link-{{.Code}}">go/{{.Code}}</a>

@@ -38,6 +38,21 @@ func (c *appConfig) snapshot() (publicBase, publicHost, uiHost, internalHost, al
 	return c.PublicBase, c.PublicHost, c.UIHost, c.InternalHost, c.AliasHost
 }
 
+// aliasBase returns the full URL prefix for the alias host (e.g. https://pmh.so),
+// deriving the scheme from PublicBase. Returns "" when no alias host is set.
+func (c *appConfig) aliasBase() string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if c.AliasHost == "" {
+		return ""
+	}
+	u, _ := url.Parse(c.PublicBase)
+	if u != nil && u.Scheme != "" {
+		return u.Scheme + "://" + c.AliasHost
+	}
+	return "https://" + c.AliasHost
+}
+
 func (c *appConfig) apply(publicBase, uiHost, internalHost, aliasHost string) {
 	publicBase = strings.TrimRight(publicBase, "/")
 	u, _ := url.Parse(publicBase)

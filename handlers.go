@@ -49,10 +49,11 @@ func renderIndex(w http.ResponseWriter, r *http.Request) {
 	data := struct {
 		URLs         []URLRow
 		Base         string
+		AliasBase    string
 		UIHost       string
 		InternalHost string
 		AliasHost    string
-	}{URLs: urls, Base: pb, UIHost: uh, InternalHost: ih, AliasHost: ah}
+	}{URLs: urls, Base: pb, AliasBase: cfg.aliasBase(), UIHost: uh, InternalHost: ih, AliasHost: ah}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := indexTmpl.Execute(w, data); err != nil {
@@ -128,6 +129,7 @@ func shortenHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	pb, _, _, ih, _ := cfg.snapshot()
+	ab := cfg.aliasBase()
 	resp := map[string]any{
 		"code":             code,
 		"long_url":         longURL,
@@ -136,6 +138,9 @@ func shortenHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if publicEnabled {
 		resp["short_url"] = fmt.Sprintf("%s/%s", pb, code)
+		if ab != "" {
+			resp["alias_url"] = fmt.Sprintf("%s/%s", ab, code)
+		}
 	}
 	if internalEnabled {
 		resp["internal_url"] = fmt.Sprintf("%s/%s", ih, code)

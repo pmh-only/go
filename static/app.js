@@ -66,12 +66,13 @@ async function shorten(e) {
       return;
     }
     let rows = '';
-    if (data.short_url)    rows += urlRow('pub-' + data.code, 'public',   data.short_url,   true);
+    const pubUrl = data.alias_url || data.short_url;
+    if (pubUrl)            rows += urlRow('pub-' + data.code, 'public',   pubUrl,            true);
     if (data.internal_url) rows += urlRow('int-' + data.code, 'internal', data.internal_url, false);
     resultEl.innerHTML = '<div class="result success"><div class="rlabel">Your links</div>' + rows + '</div>';
 
-    // Copy the primary URL to clipboard automatically
-    const toCopy = data.short_url || data.internal_url;
+    // Copy the primary URL to clipboard automatically (prefer alias)
+    const toCopy = data.alias_url || data.short_url || data.internal_url;
     if (toCopy && navigator.clipboard?.writeText) navigator.clipboard.writeText(toCopy).catch(() => {});
 
     setTimeout(() => location.reload(), 2000);
