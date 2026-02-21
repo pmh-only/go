@@ -40,7 +40,8 @@ body {
   margin-bottom: 1.75rem;
 }
 .panel-left input[type="url"],
-.panel-left input[type="text"] {
+.panel-left input[type="text"],
+.panel-left input[type="password"] {
   font-size: 0.88rem;
   padding: 0.55rem 0.75rem;
 }
@@ -78,7 +79,8 @@ label.field-label {
   align-items: center;
 }
 input[type="url"],
-input[type="text"] {
+input[type="text"],
+input[type="password"] {
   width: 100%;
   padding: 0.65rem 0.85rem;
   border: 1.5px solid #cbd5e0;
@@ -543,7 +545,8 @@ td.td-actions {
   overflow-y: auto;
 }
 .modal-body input[type="url"],
-.modal-body input[type="text"] {
+.modal-body input[type="text"],
+.modal-body input[type="password"] {
   font-size: 0.88rem;
   padding: 0.55rem 0.75rem;
 }
