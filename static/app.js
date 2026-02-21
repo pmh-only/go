@@ -1,113 +1,140 @@
 /* ── modals ── */
 function openModal(id) {
-  document.getElementById(id).classList.add('open');
+  document.getElementById(id).classList.add("open");
 }
 
 function closeModal(id) {
-  document.getElementById(id).classList.remove('open');
+  document.getElementById(id).classList.remove("open");
 }
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener("DOMContentLoaded", () => {
   // Close on backdrop click
-  document.querySelectorAll('.modal-overlay').forEach(el => {
-    el.addEventListener('click', e => { if (e.target === el) closeModal(el.id); });
+  document.querySelectorAll(".modal-overlay").forEach((el) => {
+    el.addEventListener("click", (e) => {
+      if (e.target === el) closeModal(el.id);
+    });
   });
   // Close on Escape
-  document.addEventListener('keydown', e => {
-    if (e.key === 'Escape') {
-      document.querySelectorAll('.modal-overlay.open').forEach(el => closeModal(el.id));
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      document
+        .querySelectorAll(".modal-overlay.open")
+        .forEach((el) => closeModal(el.id));
     }
   });
 
   // Auto-fill URL input from clipboard if it looks like a URL
-  const urlInput = document.getElementById('urlInput');
+  const urlInput = document.getElementById("urlInput");
   if (navigator.clipboard?.readText) {
-    navigator.clipboard.readText().then(text => {
-      text = text.trim();
-      if (text.startsWith('http://') || text.startsWith('https://')) {
-        urlInput.value = text;
-        urlInput.select();
-      }
-    }).catch(() => {});
+    navigator.clipboard
+      .readText()
+      .then((text) => {
+        text = text.trim();
+        if (text.startsWith("http://") || text.startsWith("https://")) {
+          urlInput.value = text;
+          urlInput.select();
+        }
+      })
+      .catch(() => {});
   }
 });
 
 /* ── helpers ── */
 function stripScheme(url) {
-  return url.replace(/^https?:\/\//, '');
+  return url.replace(/^https?:\/\//, "");
 }
 
 /* ── click-to-copy link ── */
 function copyLink(e, el) {
   e.preventDefault();
-  if (el.classList.contains('disabled')) return;
+  if (el.classList.contains("disabled")) return;
   const url = el.dataset.url;
   if (!url || !navigator.clipboard?.writeText) return;
-  navigator.clipboard.writeText(url).then(() => {
-    el.classList.add('copied');
-    setTimeout(() => el.classList.remove('copied'), 1500);
-  }).catch(() => {});
+  navigator.clipboard
+    .writeText(url)
+    .then(() => {
+      el.classList.add("copied");
+      setTimeout(() => el.classList.remove("copied"), 1500);
+    })
+    .catch(() => {});
 }
 
 /* ── form toggles ── */
 function onToggle() {
-  const pub  = document.getElementById('chkPublic');
-  const int_ = document.getElementById('chkInternal');
-  document.getElementById('togglePublic').classList.toggle('on', pub.checked);
-  document.getElementById('togglePublic').classList.toggle('off', !pub.checked);
-  document.getElementById('toggleInternal').classList.toggle('on', int_.checked);
-  document.getElementById('toggleInternal').classList.toggle('off', !int_.checked);
-  document.getElementById('toggleErr').style.display = (!pub.checked && !int_.checked) ? '' : 'none';
+  const pub = document.getElementById("chkPublic");
+  const int_ = document.getElementById("chkInternal");
+  document.getElementById("togglePublic").classList.toggle("on", pub.checked);
+  document.getElementById("togglePublic").classList.toggle("off", !pub.checked);
+  document
+    .getElementById("toggleInternal")
+    .classList.toggle("on", int_.checked);
+  document
+    .getElementById("toggleInternal")
+    .classList.toggle("off", !int_.checked);
+  document.getElementById("toggleErr").style.display =
+    !pub.checked && !int_.checked ? "" : "none";
 }
 
 /* ── shorten ── */
 async function shorten(e) {
   e.preventDefault();
-  const pub  = document.getElementById('chkPublic').checked;
-  const int_ = document.getElementById('chkInternal').checked;
-  if (!pub && !int_) { document.getElementById('toggleErr').style.display = ''; return; }
+  const pub = document.getElementById("chkPublic").checked;
+  const int_ = document.getElementById("chkInternal").checked;
+  if (!pub && !int_) {
+    document.getElementById("toggleErr").style.display = "";
+    return;
+  }
 
-  const url      = document.getElementById('urlInput').value.trim();
-  const alias    = document.getElementById('aliasInput').value.trim();
-  const resultEl = document.getElementById('result');
-  resultEl.innerHTML = '';
+  const url = document.getElementById("urlInput").value.trim();
+  const alias = document.getElementById("aliasInput").value.trim();
+  const resultEl = document.getElementById("result");
+  resultEl.innerHTML = "";
 
   const payload = { url, public_enabled: pub, internal_enabled: int_ };
   if (alias) payload.custom_code = alias;
 
   try {
-    const res  = await fetch('/shorten', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    const res = await fetch("/shorten", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
     const data = await res.json();
     if (!res.ok) {
-      resultEl.innerHTML = '<div class="result error"><div class="rlabel">Error</div>' + (data.error || 'Something went wrong') + '</div>';
+      resultEl.innerHTML =
+        '<div class="result error"><div class="rlabel">Error</div>' +
+        (data.error || "Something went wrong") +
+        "</div>";
       return;
     }
-    resultEl.innerHTML = '';
+    resultEl.innerHTML = "";
 
     // Copy the primary URL to clipboard automatically (prefer alias)
     const toCopy = data.alias_url || data.short_url || data.internal_url;
-    if (toCopy && navigator.clipboard?.writeText) navigator.clipboard.writeText(toCopy).catch(() => {});
+    if (toCopy && navigator.clipboard?.writeText)
+      navigator.clipboard.writeText(toCopy).catch(() => {});
 
     // Reset form
-    document.getElementById('urlInput').value   = '';
-    document.getElementById('aliasInput').value = '';
+    document.getElementById("urlInput").value = "";
+    document.getElementById("aliasInput").value = "";
 
     // Insert new row at top of table
     insertNewRow(data);
   } catch {
-    resultEl.innerHTML = '<div class="result error"><div class="rlabel">Error</div>Network error.</div>';
+    resultEl.innerHTML =
+      '<div class="result error"><div class="rlabel">Error</div>Network error.</div>';
   }
 }
 
 function insertNewRow(data) {
-  const code    = data.code;
+  const code = data.code;
   const longURL = data.long_url;
-  const pubUrl  = data.alias_url || data.short_url || '';
-  const intUrl  = data.internal_url || '';
+  const pubUrl = data.alias_url || data.short_url || "";
+  const intUrl = data.internal_url || "";
   const pubEnabled = !!pubUrl;
   const intEnabled = !!intUrl;
 
-  const shortLong = longURL.length > 55 ? longURL.slice(0, 55) + '…' : longURL;
+  const shortLong = longURL.length > 55 ? longURL.slice(0, 55) + "…" : longURL;
   const pubDisplay = stripScheme(pubUrl);
 
   const pubLink = pubEnabled
@@ -116,13 +143,13 @@ function insertNewRow(data) {
   const intLink = intEnabled
     ? `<a data-url="${intUrl}" onclick="copyLink(event,this)" id="int-link-${code}">${intUrl}</a>`
     : `<a class="disabled" data-url="${intUrl}" onclick="copyLink(event,this)" id="int-link-${code}">${intUrl}</a>`;
-  const pubToggle = `<button class="row-toggle tag-public ${pubEnabled ? 'on' : 'off'}" onclick="rowToggle('${code}','public',this)" title="Toggle public link">P</button>`;
-  const intToggle = `<button class="row-toggle tag-internal ${intEnabled ? 'on' : 'off'}" onclick="rowToggle('${code}','internal',this)" title="Toggle internal link">I</button>`;
+  const pubToggle = `<button class="row-toggle tag-public ${pubEnabled ? "on" : "off"}" onclick="rowToggle('${code}','public',this)" title="Toggle public link">P</button>`;
+  const intToggle = `<button class="row-toggle tag-internal ${intEnabled ? "on" : "off"}" onclick="rowToggle('${code}','internal',this)" title="Toggle internal link">I</button>`;
 
   const longURLEscaped = longURL.replace(/'/g, "\\'");
-  const tr = document.createElement('tr');
-  tr.id = 'row-' + code;
-  tr.className = 'row-new';
+  const tr = document.createElement("tr");
+  tr.id = "row-" + code;
+  tr.className = "row-new";
   tr.innerHTML = `
     <td class="td-links">
       <div class="code-row" id="code-display-${code}">
@@ -150,134 +177,177 @@ function insertNewRow(data) {
         </div>
     </td>`;
 
-  let tbody = document.getElementById('linksBody');
+  let tbody = document.getElementById("linksBody");
   if (!tbody) {
     // First ever link — replace empty-state with a full table
-    const emptyState = document.getElementById('emptyState');
-    const tableWrap  = emptyState.parentNode;
+    const emptyState = document.getElementById("emptyState");
+    const tableWrap = emptyState.parentNode;
     emptyState.remove();
     tableWrap.innerHTML =
-      '<table><thead><tr><th>Links</th><th>Original</th><th>Created</th><th>Actions</th></tr></thead>' +
+      "<table><thead><tr><th>Links</th><th>Original</th><th>Created</th><th>Actions</th></tr></thead>" +
       '<tbody id="linksBody"></tbody></table>';
-    tbody = document.getElementById('linksBody');
+    tbody = document.getElementById("linksBody");
   }
 
   tbody.insertBefore(tr, tbody.firstChild);
 
   // Update count label
-  const label = document.getElementById('countLabel');
+  const label = document.getElementById("countLabel");
   if (label) {
-    const total = tbody.querySelectorAll('tr').length;
-    label.textContent = total + ' entries';
+    const total = tbody.querySelectorAll("tr").length;
+    label.textContent = total + " entries";
   }
 }
 
 function urlRow(id, type, text, isHref) {
-  const tag     = '<span class="url-tag tag-' + type + ' on">' + type + '</span>';
+  const tag = '<span class="url-tag tag-' + type + ' on">' + type + "</span>";
   const display = stripScheme(text);
   const a = isHref
-    ? '<a id="' + id + '" href="' + text + '" target="_blank" data-url="' + text + '" onclick="copyLink(event,this)">' + display + '</a>'
-    : '<a id="' + id + '" data-url="' + text + '" onclick="copyLink(event,this)">' + display + '</a>';
-  return '<div class="url-row">' + tag + a + '</div>';
+    ? '<a id="' +
+      id +
+      '" href="' +
+      text +
+      '" target="_blank" data-url="' +
+      text +
+      '" onclick="copyLink(event,this)">' +
+      display +
+      "</a>"
+    : '<a id="' +
+      id +
+      '" data-url="' +
+      text +
+      '" onclick="copyLink(event,this)">' +
+      display +
+      "</a>";
+  return '<div class="url-row">' + tag + a + "</div>";
 }
 
 /* ── edit code (ID) — inline ── */
 function startEditCode(code) {
-  const disp = document.getElementById('code-display-' + code);
-  disp.style.display = 'none';
-  const editDiv = document.createElement('div');
-  editDiv.className = 'code-edit-row';
-  editDiv.id = 'code-edit-' + code;
+  const disp = document.getElementById("code-display-" + code);
+  disp.style.display = "none";
+  const editDiv = document.createElement("div");
+  editDiv.className = "code-edit-row";
+  editDiv.id = "code-edit-" + code;
   editDiv.innerHTML =
-    '<input class="code-edit-input" id="code-input-' + code + '" value="' + code + '">' +
-    '<button class="link-copy" style="opacity:1;background:#c6f6d5;color:#276749" onclick="saveEditCode(\'' + code + '\')">✓</button>' +
-    '<button class="link-copy" style="opacity:1" onclick="cancelEditCode(\'' + code + '\')">✕</button>';
+    '<input class="code-edit-input" id="code-input-' +
+    code +
+    '" value="' +
+    code +
+    '">' +
+    '<button class="link-copy" style="opacity:1;background:#c6f6d5;color:#276749" onclick="saveEditCode(\'' +
+    code +
+    "')\">✓</button>" +
+    '<button class="link-copy" style="opacity:1" onclick="cancelEditCode(\'' +
+    code +
+    "')\">✕</button>";
   disp.parentNode.insertBefore(editDiv, disp);
-  const inp = document.getElementById('code-input-' + code);
-  inp.focus(); inp.select();
-  inp.addEventListener('keydown', e => {
-    if (e.key === 'Enter')  saveEditCode(code);
-    if (e.key === 'Escape') cancelEditCode(code);
+  const inp = document.getElementById("code-input-" + code);
+  inp.focus();
+  inp.select();
+  inp.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") saveEditCode(code);
+    if (e.key === "Escape") cancelEditCode(code);
   });
 }
 
 async function saveEditCode(oldCode) {
-  const newCode = document.getElementById('code-input-' + oldCode).value.trim();
-  if (!newCode || newCode === oldCode) { cancelEditCode(oldCode); return; }
-  const res = await fetch('/urls/' + oldCode, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
+  const newCode = document.getElementById("code-input-" + oldCode).value.trim();
+  if (!newCode || newCode === oldCode) {
+    cancelEditCode(oldCode);
+    return;
+  }
+  const res = await fetch("/urls/" + oldCode, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ code: newCode }),
   });
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
-    document.getElementById('code-input-' + oldCode).style.borderColor = '#fc8181';
-    document.getElementById('code-input-' + oldCode).title = data.error || 'Error';
+    document.getElementById("code-input-" + oldCode).style.borderColor =
+      "#fc8181";
+    document.getElementById("code-input-" + oldCode).title =
+      data.error || "Error";
     return;
   }
-  const row = document.getElementById('row-' + oldCode);
-  row.id = 'row-' + newCode;
-  document.getElementById('code-edit-' + oldCode).remove();
-  const disp = document.getElementById('code-display-' + oldCode);
-  disp.id = 'code-display-' + newCode;
-  disp.querySelector('.code-label').textContent = newCode;
-  disp.style.display = '';
-  const pb = document.getElementById('pub-link-' + oldCode);
-  const ib = document.getElementById('int-link-' + oldCode);
+  const row = document.getElementById("row-" + oldCode);
+  row.id = "row-" + newCode;
+  document.getElementById("code-edit-" + oldCode).remove();
+  const disp = document.getElementById("code-display-" + oldCode);
+  disp.id = "code-display-" + newCode;
+  disp.querySelector(".code-label").textContent = newCode;
+  disp.style.display = "";
+  const pb = document.getElementById("pub-link-" + oldCode);
+  const ib = document.getElementById("int-link-" + oldCode);
   if (pb) {
-    pb.id = 'pub-link-' + newCode;
+    pb.id = "pub-link-" + newCode;
     pb.textContent = pb.textContent.replace(oldCode, newCode);
-    pb.dataset.url  = pb.dataset.url.replace(oldCode, newCode);
-    if (pb.getAttribute('href')) pb.setAttribute('href', pb.dataset.url);
+    pb.dataset.url = pb.dataset.url.replace(oldCode, newCode);
+    if (pb.getAttribute("href")) pb.setAttribute("href", pb.dataset.url);
   }
   if (ib) {
-    ib.id = 'int-link-' + newCode;
-    ib.textContent  = ib.textContent.replace(oldCode, newCode);
-    ib.dataset.url  = ib.dataset.url.replace(oldCode, newCode);
+    ib.id = "int-link-" + newCode;
+    ib.textContent = ib.textContent.replace(oldCode, newCode);
+    ib.dataset.url = ib.dataset.url.replace(oldCode, newCode);
   }
-  row.querySelectorAll('[onclick]').forEach(el => {
-    el.setAttribute('onclick', el.getAttribute('onclick').replaceAll("'" + oldCode + "'", "'" + newCode + "'"));
+  row.querySelectorAll("[onclick]").forEach((el) => {
+    el.setAttribute(
+      "onclick",
+      el
+        .getAttribute("onclick")
+        .replaceAll("'" + oldCode + "'", "'" + newCode + "'"),
+    );
   });
 }
 
 function cancelEditCode(code) {
-  const editDiv = document.getElementById('code-edit-' + code);
+  const editDiv = document.getElementById("code-edit-" + code);
   if (editDiv) editDiv.remove();
-  document.getElementById('code-display-' + code).style.display = '';
+  document.getElementById("code-display-" + code).style.display = "";
 }
 
 /* ── search / filter ── */
 function filterRows(q) {
   const term = q.trim().toLowerCase();
-  const rows = document.querySelectorAll('tbody tr');
+  const rows = document.querySelectorAll("tbody tr");
   let visible = 0;
-  rows.forEach(row => {
+  rows.forEach((row) => {
     const show = !term || row.textContent.toLowerCase().includes(term);
-    row.style.display = show ? '' : 'none';
+    row.style.display = show ? "" : "none";
     if (show) visible++;
   });
-  const label = document.getElementById('countLabel');
-  if (label) label.textContent = (term ? visible + ' of ' + rows.length : rows.length) + ' entries';
+  const label = document.getElementById("countLabel");
+  if (label)
+    label.textContent =
+      (term ? visible + " of " + rows.length : rows.length) + " entries";
 }
 
 /* ── settings modal ── */
 async function saveSettings() {
   const payload = {
-    public_base:   document.getElementById('cfgPublicBase').value.trim(),
-    ui_host:       document.getElementById('cfgUIHost').value.trim(),
-    internal_host: document.getElementById('cfgInternalHost').value.trim(),
-    alias_host:    document.getElementById('cfgAliasHost').value.trim(),
+    public_base: document.getElementById("cfgPublicBase").value.trim(),
+    ui_host: document.getElementById("cfgUIHost").value.trim(),
+    internal_host: document.getElementById("cfgInternalHost").value.trim(),
+    alias_host: document.getElementById("cfgAliasHost").value.trim(),
   };
-  const res = await fetch('/settings', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-  const fb  = document.getElementById('settingsFeedback');
-  fb.style.display = '';
+  const res = await fetch("/settings", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const fb = document.getElementById("settingsFeedback");
+  fb.style.display = "";
   if (res.ok) {
-    fb.textContent = 'Saved!'; fb.style.color = '#276749';
-    setTimeout(() => closeModal('modalSettings'), 800);
+    fb.textContent = "Saved!";
+    fb.style.color = "#276749";
+    setTimeout(() => closeModal("modalSettings"), 800);
   } else {
-    fb.textContent = 'Error saving.'; fb.style.color = '#c53030';
+    fb.textContent = "Error saving.";
+    fb.style.color = "#c53030";
   }
-  setTimeout(() => { fb.style.display = 'none'; }, 2500);
+  setTimeout(() => {
+    fb.style.display = "none";
+  }, 2500);
 }
 
 /* ── QR code modal ── */
@@ -285,52 +355,66 @@ let currentQRCode = null;
 
 function showQR(code) {
   currentQRCode = code;
-  const img = document.getElementById('qrImage');
-  img.src = '/qr/' + code;
-  document.getElementById('qrViewLink').href = '/qr/' + code;
-  document.getElementById('qrFeedback').style.display = 'none';
-  openModal('modalQR');
+  const img = document.getElementById("qrImage");
+  img.src = "/qr/" + code;
+  document.getElementById("qrViewLink").href = "/qr/" + code;
+  document.getElementById("qrFeedback").style.display = "none";
+  openModal("modalQR");
 }
 
 async function copyQR() {
   try {
-    const res  = await fetch('/qr/' + currentQRCode);
+    const res = await fetch("/qr/" + currentQRCode);
     const blob = await res.blob();
-    await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
-    const fb = document.getElementById('qrFeedback');
-    fb.textContent = 'Copied!'; fb.style.color = '#276749'; fb.style.display = '';
-    setTimeout(() => { fb.style.display = 'none'; }, 2000);
+    await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+    const fb = document.getElementById("qrFeedback");
+    fb.textContent = "Copied!";
+    fb.style.color = "#276749";
+    fb.style.display = "";
+    setTimeout(() => {
+      fb.style.display = "none";
+    }, 2000);
   } catch {
-    const fb = document.getElementById('qrFeedback');
-    fb.textContent = 'Copy failed — try Download instead.'; fb.style.color = '#c53030'; fb.style.display = '';
+    const fb = document.getElementById("qrFeedback");
+    fb.textContent = "Copy failed — try Download instead.";
+    fb.style.color = "#c53030";
+    fb.style.display = "";
   }
 }
 
 function downloadQR() {
-  const a = document.createElement('a');
-  a.href = '/qr/' + currentQRCode;
-  a.download = currentQRCode + '-qr.png';
+  const a = document.createElement("a");
+  a.href = "/qr/" + currentQRCode;
+  a.download = currentQRCode + "-qr.png";
   a.click();
 }
 
 /* ── row visibility toggle ── */
 async function rowToggle(code, type, btn) {
-  const isOn    = btn.classList.contains('on');
-  const newVal  = !isOn;
-  const row     = document.getElementById('row-' + code);
-  const btns    = row.querySelectorAll('.row-toggle');
+  const isOn = btn.classList.contains("on");
+  const newVal = !isOn;
+  const row = document.getElementById("row-" + code);
   const payload = {};
-  payload[type === 'public' ? 'public_enabled' : 'internal_enabled'] = newVal;
-  const res = await fetch('/urls/' + code, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+  payload[type === "public" ? "public_enabled" : "internal_enabled"] = newVal;
+  const res = await fetch("/urls/" + code, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
   if (!res.ok) return;
-  btn.classList.toggle('on', newVal);
-  btn.classList.toggle('off', !newVal);
-  const links = row.querySelectorAll('.td-links a');
-  const idx   = type === 'public' ? 0 : 1;
-  links[idx].classList.toggle('disabled', !newVal);
-  if (type === 'public') {
-    if (newVal) { links[idx].setAttribute('href', links[idx].dataset.url); links[idx].target = '_blank'; }
-    else        { links[idx].removeAttribute('href'); links[idx].removeAttribute('target'); }
+  btn.classList.toggle("on", newVal);
+  btn.classList.toggle("off", !newVal);
+  const links = row.querySelectorAll(".td-links a");
+  const idx = type === "public" ? 0 : 1;
+  links[idx].classList.toggle("disabled", !newVal);
+  if (type === "public") {
+    if (newVal) {
+      links[idx].setAttribute("href", links[idx].dataset.url);
+      links[idx].target = "_blank";
+    } else {
+      links[idx].removeAttribute("href");
+      links[idx].removeAttribute("target");
+    }
   }
 }
 
@@ -339,74 +423,87 @@ let currentEditCode = null;
 
 function startEdit(code, currentURL) {
   currentEditCode = code;
-  const codeInp = document.getElementById('editCodeInput');
+  const codeInp = document.getElementById("editCodeInput");
   codeInp.value = code;
-  codeInp.style.borderColor = '';
-  const urlInp = document.getElementById('editUrlInput');
+  codeInp.style.borderColor = "";
+  const urlInp = document.getElementById("editUrlInput");
   urlInp.value = currentURL;
-  urlInp.style.borderColor = '';
-  document.getElementById('editFeedback').style.display = 'none';
-  openModal('modalEdit');
+  urlInp.style.borderColor = "";
+  document.getElementById("editFeedback").style.display = "none";
+  openModal("modalEdit");
   setTimeout(() => codeInp.focus(), 50);
 }
 
 async function confirmEdit() {
-  const newCode = document.getElementById('editCodeInput').value.trim();
-  const newURL  = document.getElementById('editUrlInput').value.trim();
+  const newCode = document.getElementById("editCodeInput").value.trim();
+  const newURL = document.getElementById("editUrlInput").value.trim();
   if (!newURL) return;
 
   const body = { long_url: newURL };
   if (newCode && newCode !== currentEditCode) body.code = newCode;
 
-  const res = await fetch('/urls/' + currentEditCode, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
+  const res = await fetch("/urls/" + currentEditCode, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
-    const fb = document.getElementById('editFeedback');
-    fb.textContent = data.error || 'Failed to save.'; fb.style.color = '#c53030'; fb.style.display = '';
-    if (body.code) document.getElementById('editCodeInput').style.borderColor = '#fc8181';
-    else           document.getElementById('editUrlInput').style.borderColor  = '#fc8181';
+    const fb = document.getElementById("editFeedback");
+    fb.textContent = data.error || "Failed to save.";
+    fb.style.color = "#c53030";
+    fb.style.display = "";
+    if (body.code)
+      document.getElementById("editCodeInput").style.borderColor = "#fc8181";
+    else document.getElementById("editUrlInput").style.borderColor = "#fc8181";
     return;
   }
 
   const effectiveCode = body.code || currentEditCode;
 
   // Update destination URL cell
-  const cell  = document.getElementById('orig-' + currentEditCode);
-  const short = newURL.length > 55 ? newURL.slice(0, 55) + '…' : newURL;
-  cell.innerHTML = '<a href="' + newURL + '" target="_blank" style="color:#2b6cb0">' + short + '</a>';
+  const cell = document.getElementById("orig-" + currentEditCode);
+  const short = newURL.length > 55 ? newURL.slice(0, 55) + "…" : newURL;
+  cell.innerHTML =
+    '<a href="' +
+    newURL +
+    '" target="_blank" style="color:#2b6cb0">' +
+    short +
+    "</a>";
 
   // If the code changed, rename all code-keyed DOM elements
   if (body.code) {
     const oldCode = currentEditCode;
-    const row = document.getElementById('row-' + oldCode);
-    row.id = 'row-' + effectiveCode;
-    cell.id = 'orig-' + effectiveCode;
-    const disp = document.getElementById('code-display-' + oldCode);
-    disp.id = 'code-display-' + effectiveCode;
-    disp.querySelector('.code-label').textContent = effectiveCode;
-    const pb = document.getElementById('pub-link-' + oldCode);
-    const ib = document.getElementById('int-link-' + oldCode);
+    const row = document.getElementById("row-" + oldCode);
+    row.id = "row-" + effectiveCode;
+    cell.id = "orig-" + effectiveCode;
+    const disp = document.getElementById("code-display-" + oldCode);
+    disp.id = "code-display-" + effectiveCode;
+    disp.querySelector(".code-label").textContent = effectiveCode;
+    const pb = document.getElementById("pub-link-" + oldCode);
+    const ib = document.getElementById("int-link-" + oldCode);
     if (pb) {
-      pb.id = 'pub-link-' + effectiveCode;
+      pb.id = "pub-link-" + effectiveCode;
       pb.textContent = pb.textContent.replace(oldCode, effectiveCode);
-      pb.dataset.url  = pb.dataset.url.replace(oldCode, effectiveCode);
-      if (pb.getAttribute('href')) pb.setAttribute('href', pb.dataset.url);
+      pb.dataset.url = pb.dataset.url.replace(oldCode, effectiveCode);
+      if (pb.getAttribute("href")) pb.setAttribute("href", pb.dataset.url);
     }
     if (ib) {
-      ib.id = 'int-link-' + effectiveCode;
-      ib.textContent  = ib.textContent.replace(oldCode, effectiveCode);
-      ib.dataset.url  = ib.dataset.url.replace(oldCode, effectiveCode);
+      ib.id = "int-link-" + effectiveCode;
+      ib.textContent = ib.textContent.replace(oldCode, effectiveCode);
+      ib.dataset.url = ib.dataset.url.replace(oldCode, effectiveCode);
     }
-    row.querySelectorAll('[onclick]').forEach(el => {
-      el.setAttribute('onclick', el.getAttribute('onclick').replaceAll("'" + oldCode + "'", "'" + effectiveCode + "'"));
+    row.querySelectorAll("[onclick]").forEach((el) => {
+      el.setAttribute(
+        "onclick",
+        el
+          .getAttribute("onclick")
+          .replaceAll("'" + oldCode + "'", "'" + effectiveCode + "'"),
+      );
     });
   }
 
-  closeModal('modalEdit');
+  closeModal("modalEdit");
 }
 
 /* ── delete — modal ── */
@@ -414,12 +511,12 @@ let currentDeleteCode = null;
 
 function deleteRow(code) {
   currentDeleteCode = code;
-  document.getElementById('deleteModalCode').textContent = code;
-  openModal('modalDelete');
+  document.getElementById("deleteModalCode").textContent = code;
+  openModal("modalDelete");
 }
 
 async function confirmDelete() {
-  const res = await fetch('/urls/' + currentDeleteCode, { method: 'DELETE' });
-  if (res.ok) document.getElementById('row-' + currentDeleteCode).remove();
-  closeModal('modalDelete');
+  const res = await fetch("/urls/" + currentDeleteCode, { method: "DELETE" });
+  if (res.ok) document.getElementById("row-" + currentDeleteCode).remove();
+  closeModal("modalDelete");
 }
