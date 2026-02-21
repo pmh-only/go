@@ -72,6 +72,17 @@ func hostOnly(h string) string {
 	return host
 }
 
+// effectiveHost returns the hostname the client used to reach the server.
+// X-Forwarded-Host is preferred so that reverse-proxy deployments that rewrite
+// the Host header still route correctly. Only deploy behind a trusted proxy;
+// do not expose this service directly to the internet without one.
+func effectiveHost(r *http.Request) string {
+	if xfh := r.Header.Get("X-Forwarded-Host"); xfh != "" {
+		return hostOnly(xfh)
+	}
+	return hostOnly(r.Host)
+}
+
 var (
 	db        *sql.DB
 	validCode = regexp.MustCompile(`^[a-zA-Z0-9_-]{1,32}$`)
@@ -1261,7 +1272,7 @@ func internalRouter(w http.ResponseWriter, r *http.Request) {
 }
 
 func mainHandler(w http.ResponseWriter, r *http.Request) {
-	host := hostOnly(r.Host)
+	host := effectiveHost(r)
 	_, ph, uh, ih, ah := cfg.snapshot()
 
 	switch host {
