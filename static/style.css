@@ -173,7 +173,7 @@ td.td-date { white-space: nowrap; color: #a0aec0; font-size: .78rem; }
 }
 .link-line a:not(.disabled):hover { text-decoration: underline; }
 .link-line a.disabled { color: #a0aec0; text-decoration: line-through; pointer-events: none; cursor: default; }
-.link-line a.copied { color: #276749 !important; }
+.link-line a.copied { color: #276749 !important; overflow: visible; }
 .link-line a.copied::after {
   content: 'Copied!';
   position: absolute;
