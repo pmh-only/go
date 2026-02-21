@@ -152,10 +152,6 @@ function insertNewRow(data) {
   tr.className = "row-new";
   tr.innerHTML = `
     <td class="td-links">
-      <div class="code-row" id="code-display-${code}">
-        <span class="code-label">${code}</span>
-        <button class="link-copy" style="opacity:0" onclick="startEditCode('${code}')">✎</button>
-      </div>
       <div class="link-line">${pubToggle}${pubLink}</div>
       <div class="link-line">${intToggle}${intLink}</div>
     </td>
@@ -197,113 +193,6 @@ function insertNewRow(data) {
     const total = tbody.querySelectorAll("tr").length;
     label.textContent = total + " entries";
   }
-}
-
-function urlRow(id, type, text, isHref) {
-  const tag = '<span class="url-tag tag-' + type + ' on">' + type + "</span>";
-  const display = stripScheme(text);
-  const a = isHref
-    ? '<a id="' +
-      id +
-      '" href="' +
-      text +
-      '" target="_blank" data-url="' +
-      text +
-      '" onclick="copyLink(event,this)">' +
-      display +
-      "</a>"
-    : '<a id="' +
-      id +
-      '" data-url="' +
-      text +
-      '" onclick="copyLink(event,this)">' +
-      display +
-      "</a>";
-  return '<div class="url-row">' + tag + a + "</div>";
-}
-
-/* ── edit code (ID) — inline ── */
-function startEditCode(code) {
-  const disp = document.getElementById("code-display-" + code);
-  disp.style.display = "none";
-  const editDiv = document.createElement("div");
-  editDiv.className = "code-edit-row";
-  editDiv.id = "code-edit-" + code;
-  editDiv.innerHTML =
-    '<input class="code-edit-input" id="code-input-' +
-    code +
-    '" value="' +
-    code +
-    '">' +
-    '<button class="link-copy" style="opacity:1;background:#c6f6d5;color:#276749" onclick="saveEditCode(\'' +
-    code +
-    "')\">✓</button>" +
-    '<button class="link-copy" style="opacity:1" onclick="cancelEditCode(\'' +
-    code +
-    "')\">✕</button>";
-  disp.parentNode.insertBefore(editDiv, disp);
-  const inp = document.getElementById("code-input-" + code);
-  inp.focus();
-  inp.select();
-  inp.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") saveEditCode(code);
-    if (e.key === "Escape") cancelEditCode(code);
-  });
-}
-
-async function saveEditCode(oldCode) {
-  const newCode = document.getElementById("code-input-" + oldCode).value.trim();
-  if (!newCode || newCode === oldCode) {
-    cancelEditCode(oldCode);
-    return;
-  }
-  const res = await fetch("/urls/" + oldCode, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ code: newCode }),
-  });
-  if (!res.ok) {
-    const data = await res.json().catch(() => ({}));
-    document.getElementById("code-input-" + oldCode).style.borderColor =
-      "#fc8181";
-    document.getElementById("code-input-" + oldCode).title =
-      data.error || "Error";
-    return;
-  }
-  const row = document.getElementById("row-" + oldCode);
-  row.id = "row-" + newCode;
-  document.getElementById("code-edit-" + oldCode).remove();
-  const disp = document.getElementById("code-display-" + oldCode);
-  disp.id = "code-display-" + newCode;
-  disp.querySelector(".code-label").textContent = newCode;
-  disp.style.display = "";
-  const pb = document.getElementById("pub-link-" + oldCode);
-  const ib = document.getElementById("int-link-" + oldCode);
-  if (pb) {
-    pb.id = "pub-link-" + newCode;
-    pb.textContent = pb.textContent.replace(oldCode, newCode);
-    pb.dataset.url = pb.dataset.url.replace(oldCode, newCode);
-    if (pb.getAttribute("href")) pb.setAttribute("href", pb.dataset.url);
-  }
-  if (ib) {
-    ib.id = "int-link-" + newCode;
-    ib.textContent = ib.textContent.replace(oldCode, newCode);
-    ib.dataset.url = ib.dataset.url.replace(oldCode, newCode);
-  }
-  row.querySelectorAll("[onclick]").forEach((el) => {
-    el.setAttribute(
-      "onclick",
-      el
-        .getAttribute("onclick")
-        .replaceAll("'" + oldCode + "'", "'" + newCode + "'"),
-    );
-  });
-}
-
-function cancelEditCode(code) {
-  const editDiv = document.getElementById("code-edit-" + code);
-  if (editDiv) editDiv.remove();
-  document.getElementById("code-display-" + code).style.display = "";
 }
 
 /* ── search / filter ── */
