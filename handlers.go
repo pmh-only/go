@@ -53,6 +53,27 @@ func effectiveHost(r *http.Request) string {
 // buildVersion is injected at build time via -ldflags "-X main.buildVersion=..."
 var buildVersion string
 
+var metaRedirectTmpl = template.Must(template.New("meta").Parse(`<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="refresh" content="0; url={{.LongURL}}">
+<meta name="robots" content="noindex,nofollow">
+{{if .OGTitle}}<title>{{.OGTitle}}</title>
+<meta property="og:title" content="{{.OGTitle}}">
+<meta name="twitter:title" content="{{.OGTitle}}">{{end}}
+{{if .OGDescription}}<meta property="og:description" content="{{.OGDescription}}">
+<meta name="twitter:description" content="{{.OGDescription}}">{{end}}
+{{if .OGImage}}<meta property="og:image" content="{{.OGImage}}">
+<meta name="twitter:image" content="{{.OGImage}}">
+<meta name="twitter:card" content="summary_large_image">{{else}}<meta name="twitter:card" content="summary">{{end}}
+<meta property="og:type" content="website">
+<meta property="og:url" content="{{.ShortURL}}">
+<style>:root{color-scheme:light dark}body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background-color:Canvas;color:CanvasText;font-family:system-ui,sans-serif;font-size:.9rem}a{color:LinkText}</style>
+</head>
+<body><p>Redirecting… <a href="{{.LongURL}}">click here</a></p></body>
+</html>`))
+
 func renderIndex(w http.ResponseWriter, r *http.Request) {
 	urls, _ := getAllURLs()
 	pb, _, uh, ih, ah := cfg.snapshot()
@@ -90,6 +111,10 @@ func shortenHandler(w http.ResponseWriter, r *http.Request) {
 		CustomCode      string `json:"custom_code"`
 		PublicEnabled   *bool  `json:"public_enabled"`
 		InternalEnabled *bool  `json:"internal_enabled"`
+		RedirectType    string `json:"redirect_type"`
+		OGTitle         string `json:"og_title"`
+		OGDescription   string `json:"og_description"`
+		OGImage         string `json:"og_image"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || strings.TrimSpace(body.URL) == "" {
 		jsonError(w, http.StatusBadRequest, "invalid JSON or missing url field")
@@ -106,13 +131,19 @@ func shortenHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	redirectType := body.RedirectType
+	if redirectType != "meta" {
+		redirectType = "redirect"
+	}
+	ogTitle, ogDescription, ogImage := body.OGTitle, body.OGDescription, body.OGImage
+
 	var code string
 	if customCode != "" {
 		if !validCode.MatchString(customCode) {
 			jsonError(w, http.StatusBadRequest, "custom alias must be 1–32 chars: letters, numbers, hyphens, underscores")
 			return
 		}
-		if err := saveURL(customCode, longURL, publicEnabled, internalEnabled); err != nil {
+		if err := saveURL(customCode, longURL, publicEnabled, internalEnabled, redirectType, ogTitle, ogDescription, ogImage); err != nil {
 			if strings.Contains(err.Error(), "UNIQUE constraint failed") {
 				jsonError(w, http.StatusConflict, fmt.Sprintf("alias '%s' is already taken", customCode))
 			} else {
@@ -129,7 +160,7 @@ func shortenHandler(w http.ResponseWriter, r *http.Request) {
 				jsonError(w, http.StatusInternalServerError, "internal error")
 				return
 			}
-			err = saveURL(code, longURL, publicEnabled, internalEnabled)
+			err = saveURL(code, longURL, publicEnabled, internalEnabled, redirectType, ogTitle, ogDescription, ogImage)
 			if err == nil {
 				break
 			}
@@ -147,6 +178,10 @@ func shortenHandler(w http.ResponseWriter, r *http.Request) {
 		"long_url":         longURL,
 		"public_enabled":   publicEnabled,
 		"internal_enabled": internalEnabled,
+		"redirect_type":    redirectType,
+		"og_title":         ogTitle,
+		"og_description":   ogDescription,
+		"og_image":         ogImage,
 	}
 	if publicEnabled {
 		resp["short_url"] = fmt.Sprintf("%s/%s", pb, code)
@@ -192,6 +227,10 @@ func urlsPatchHandler(w http.ResponseWriter, r *http.Request, code string) {
 		LongURL         *string `json:"long_url"`
 		PublicEnabled   *bool   `json:"public_enabled"`
 		InternalEnabled *bool   `json:"internal_enabled"`
+		RedirectType    *string `json:"redirect_type"`
+		OGTitle         *string `json:"og_title"`
+		OGDescription   *string `json:"og_description"`
+		OGImage         *string `json:"og_image"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		jsonError(w, http.StatusBadRequest, "invalid JSON")
@@ -221,6 +260,12 @@ func urlsPatchHandler(w http.ResponseWriter, r *http.Request, code string) {
 		return
 	}
 
+	// Sanitize redirect_type
+	if body.RedirectType != nil && *body.RedirectType != "meta" {
+		rt := "redirect"
+		body.RedirectType = &rt
+	}
+
 	// Rename: INSERT with new code (preserving created_at) then DELETE old (code is PK)
 	if body.NewCode != nil {
 		newCode := strings.TrimSpace(*body.NewCode)
@@ -232,6 +277,22 @@ func urlsPatchHandler(w http.ResponseWriter, r *http.Request, code string) {
 		if body.LongURL != nil {
 			lu = *body.LongURL
 		}
+		rt := rec.RedirectType
+		if body.RedirectType != nil {
+			rt = *body.RedirectType
+		}
+		ogt := rec.OGTitle
+		if body.OGTitle != nil {
+			ogt = *body.OGTitle
+		}
+		ogd := rec.OGDescription
+		if body.OGDescription != nil {
+			ogd = *body.OGDescription
+		}
+		ogi := rec.OGImage
+		if body.OGImage != nil {
+			ogi = *body.OGImage
+		}
 		tx, err := db.Begin()
 		if err != nil {
 			jsonError(w, http.StatusInternalServerError, "database error")
@@ -239,8 +300,8 @@ func urlsPatchHandler(w http.ResponseWriter, r *http.Request, code string) {
 		}
 		defer tx.Rollback()
 		if _, err := tx.Exec(
-			"INSERT INTO urls (code, long_url, public_enabled, internal_enabled, created_at) SELECT ?, ?, ?, ?, created_at FROM urls WHERE code = ?",
-			newCode, lu, boolToInt(nextPub), boolToInt(nextInt), code,
+			"INSERT INTO urls (code, long_url, public_enabled, internal_enabled, redirect_type, og_title, og_description, og_image, created_at) SELECT ?, ?, ?, ?, ?, ?, ?, ?, created_at FROM urls WHERE code = ?",
+			newCode, lu, boolToInt(nextPub), boolToInt(nextInt), rt, ogt, ogd, ogi, code,
 		); err != nil {
 			if strings.Contains(err.Error(), "UNIQUE constraint failed") {
 				jsonError(w, http.StatusConflict, fmt.Sprintf("code '%s' is already taken", newCode))
@@ -261,7 +322,7 @@ func urlsPatchHandler(w http.ResponseWriter, r *http.Request, code string) {
 		return
 	}
 
-	if err := updateURL(code, body.LongURL, body.PublicEnabled, body.InternalEnabled); err != nil {
+	if err := updateURL(code, body.LongURL, body.PublicEnabled, body.InternalEnabled, body.RedirectType, body.OGTitle, body.OGDescription, body.OGImage); err != nil {
 		jsonError(w, http.StatusInternalServerError, "database error")
 		return
 	}
@@ -372,6 +433,19 @@ func doRedirect(w http.ResponseWriter, r *http.Request, code string, internal bo
 	}
 	if !internal && !rec.PublicEnabled {
 		http.Error(w, "public link disabled", http.StatusNotFound)
+		return
+	}
+	if rec.RedirectType == "meta" {
+		pb, _, _, _, _ := cfg.snapshot()
+		ab := cfg.aliasBase()
+		shortURL := fmt.Sprintf("%s/%s", pb, code)
+		if ab != "" {
+			shortURL = fmt.Sprintf("%s/%s", ab, code)
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		metaRedirectTmpl.Execute(w, struct {
+			LongURL, ShortURL, OGTitle, OGDescription, OGImage string
+		}{rec.LongURL, shortURL, rec.OGTitle, rec.OGDescription, rec.OGImage})
 		return
 	}
 	http.Redirect(w, r, rec.LongURL, http.StatusFound)

@@ -493,6 +493,7 @@ td.td-actions {
   border-radius: 10px;
   width: 440px;
   max-width: calc(100vw - 2rem);
+  max-height: calc(100vh - 4rem);
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
   display: flex;
   flex-direction: column;
@@ -531,6 +532,7 @@ td.td-actions {
 }
 .modal-body {
   padding: 1.25rem 1.5rem;
+  overflow-y: auto;
 }
 .modal-body input[type="url"],
 .modal-body input[type="text"] {
@@ -591,6 +593,59 @@ td.td-actions {
   color: #a0aec0;
   pointer-events: none;
   user-select: none;
+}
+
+/* ── redirect type selector ── */
+.rtype-row {
+  display: flex;
+  gap: 0.5rem;
+}
+.rtype-opt {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.35rem 0.6rem;
+  border-radius: 6px;
+  border: 1.5px solid #e2e8f0;
+  font-size: 0.8rem;
+  color: #718096;
+  cursor: pointer;
+  transition:
+    border-color 0.15s,
+    background 0.15s,
+    color 0.15s;
+  user-select: none;
+  text-align: center;
+}
+.rtype-opt input[type="radio"] {
+  display: none;
+}
+.rtype-opt:has(input:checked) {
+  border-color: #667eea;
+  background: #ebf4ff;
+  color: #2b6cb0;
+  font-weight: 600;
+}
+.og-section {
+  border-left: 2px solid #e2e8f0;
+  padding-left: 0.75rem;
+}
+.og-section .field {
+  margin-bottom: 0.6rem;
+}
+.rtype-badge {
+  display: inline-block;
+  font-size: 0.62rem;
+  font-weight: 700;
+  padding: 0.05rem 0.3rem;
+  border-radius: 3px;
+  background: #ebf4ff;
+  color: #2b6cb0;
+  vertical-align: middle;
+  margin-left: 0.2rem;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
 }
 
 /* ── Mobile ── */

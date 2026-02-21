@@ -59,6 +59,17 @@ function copyLink(e, el) {
     .catch(() => {});
 }
 
+/* ── redirect type ── */
+function onRedirectType(radio) {
+  document.getElementById("ogSection").style.display =
+    radio.value === "meta" ? "" : "none";
+}
+
+function onEditRedirectType(radio) {
+  document.getElementById("editOgSection").style.display =
+    radio.value === "meta" ? "" : "none";
+}
+
 /* ── form toggles ── */
 function onToggle() {
   const pub = document.getElementById("chkPublic");
@@ -87,10 +98,21 @@ async function shorten(e) {
 
   const url = document.getElementById("urlInput").value.trim();
   const alias = document.getElementById("aliasInput").value.trim();
+  const redirectType =
+    document.querySelector('input[name="redirectType"]:checked')?.value ||
+    "redirect";
   const resultEl = document.getElementById("result");
   resultEl.innerHTML = "";
 
-  const payload = { url, public_enabled: pub, internal_enabled: int_ };
+  const payload = {
+    url,
+    public_enabled: pub,
+    internal_enabled: int_,
+    redirect_type: redirectType,
+    og_title: document.getElementById("ogTitle").value.trim(),
+    og_description: document.getElementById("ogDescription").value.trim(),
+    og_image: document.getElementById("ogImage").value.trim(),
+  };
   if (alias) payload.custom_code = alias;
 
   try {
@@ -117,6 +139,11 @@ async function shorten(e) {
     // Reset form
     document.getElementById("urlInput").value = "";
     document.getElementById("aliasInput").value = "";
+    document.getElementById("ogTitle").value = "";
+    document.getElementById("ogDescription").value = "";
+    document.getElementById("ogImage").value = "";
+    document.getElementById("rtypeRedirect").checked = true;
+    document.getElementById("ogSection").style.display = "none";
 
     // Insert new row at top of table
     insertNewRow(data);
@@ -133,6 +160,7 @@ function insertNewRow(data) {
   const intUrl = data.internal_url || "";
   const pubEnabled = !!pubUrl;
   const intEnabled = !!intUrl;
+  const redirectType = data.redirect_type || "redirect";
 
   const shortLong = longURL.length > 55 ? longURL.slice(0, 55) + "…" : longURL;
   const pubDisplay = stripScheme(pubUrl);
@@ -145,14 +173,20 @@ function insertNewRow(data) {
     : `<a class="disabled" data-url="${intUrl}" onclick="copyLink(event,this)" id="int-link-${code}">${intUrl}</a>`;
   const pubToggle = `<button class="row-toggle tag-public ${pubEnabled ? "on" : "off"}" onclick="rowToggle('${code}','public',this)" title="Toggle public link">P</button>`;
   const intToggle = `<button class="row-toggle tag-internal ${intEnabled ? "on" : "off"}" onclick="rowToggle('${code}','internal',this)" title="Toggle internal link">I</button>`;
+  const metaBadge =
+    redirectType === "meta" ? `<span class="rtype-badge">META</span>` : "";
 
   const longURLEscaped = longURL.replace(/'/g, "\\'");
   const tr = document.createElement("tr");
   tr.id = "row-" + code;
   tr.className = "row-new";
+  tr.dataset.rtype = redirectType;
+  tr.dataset.ogTitle = data.og_title || "";
+  tr.dataset.ogDesc = data.og_description || "";
+  tr.dataset.ogImage = data.og_image || "";
   tr.innerHTML = `
     <td class="td-links">
-      <div class="link-line">${pubToggle}${pubLink}</div>
+      <div class="link-line">${pubToggle}${pubLink}${metaBadge}</div>
       <div class="link-line">${intToggle}${intLink}</div>
     </td>
     <td class="td-original" id="orig-${code}">
@@ -319,6 +353,19 @@ function startEdit(code, currentURL) {
   urlInp.value = currentURL;
   urlInp.style.borderColor = "";
   document.getElementById("editFeedback").style.display = "none";
+
+  // Restore redirect type + OG from row data attributes
+  const row = document.getElementById("row-" + code);
+  const rtype = row?.dataset.rtype || "redirect";
+  document.getElementById("editRtypeRedirect").checked = rtype !== "meta";
+  document.getElementById("editRtypeMeta").checked = rtype === "meta";
+  document.getElementById("editOgSection").style.display =
+    rtype === "meta" ? "" : "none";
+  document.getElementById("editOgTitle").value = row?.dataset.ogTitle || "";
+  document.getElementById("editOgDescription").value =
+    row?.dataset.ogDesc || "";
+  document.getElementById("editOgImage").value = row?.dataset.ogImage || "";
+
   openModal("modalEdit");
   setTimeout(() => codeInp.focus(), 50);
 }
@@ -328,7 +375,16 @@ async function confirmEdit() {
   const newURL = document.getElementById("editUrlInput").value.trim();
   if (!newURL) return;
 
-  const body = { long_url: newURL };
+  const rtype =
+    document.querySelector('input[name="editRedirectType"]:checked')?.value ||
+    "redirect";
+  const body = {
+    long_url: newURL,
+    redirect_type: rtype,
+    og_title: document.getElementById("editOgTitle").value.trim(),
+    og_description: document.getElementById("editOgDescription").value.trim(),
+    og_image: document.getElementById("editOgImage").value.trim(),
+  };
   if (newCode && newCode !== currentEditCode) body.code = newCode;
 
   const res = await fetch("/urls/" + currentEditCode, {
@@ -366,9 +422,6 @@ async function confirmEdit() {
     const row = document.getElementById("row-" + oldCode);
     row.id = "row-" + effectiveCode;
     cell.id = "orig-" + effectiveCode;
-    const disp = document.getElementById("code-display-" + oldCode);
-    disp.id = "code-display-" + effectiveCode;
-    disp.querySelector(".code-label").textContent = effectiveCode;
     const pb = document.getElementById("pub-link-" + oldCode);
     const ib = document.getElementById("int-link-" + oldCode);
     if (pb) {
@@ -390,6 +443,28 @@ async function confirmEdit() {
           .replaceAll("'" + oldCode + "'", "'" + effectiveCode + "'"),
       );
     });
+  }
+
+  // Update row data attributes + META badge
+  const rowEl = document.getElementById("row-" + effectiveCode);
+  if (rowEl) {
+    rowEl.dataset.rtype = rtype;
+    rowEl.dataset.ogTitle = body.og_title;
+    rowEl.dataset.ogDesc = body.og_description;
+    rowEl.dataset.ogImage = body.og_image;
+  }
+  const pubLinkEl = document.getElementById("pub-link-" + effectiveCode);
+  if (pubLinkEl) {
+    const linkLine = pubLinkEl.closest(".link-line");
+    const existingBadge = linkLine.querySelector(".rtype-badge");
+    if (rtype === "meta" && !existingBadge) {
+      const badge = document.createElement("span");
+      badge.className = "rtype-badge";
+      badge.textContent = "META";
+      linkLine.appendChild(badge);
+    } else if (rtype !== "meta" && existingBadge) {
+      existingBadge.remove();
+    }
   }
 
   closeModal("modalEdit");

@@ -77,6 +77,55 @@
           </div>
           <p id="toggleErr">At least one link type must be active.</p>
         </div>
+        <div class="field">
+          <label class="field-label">Redirect type</label>
+          <div class="rtype-row">
+            <label class="rtype-opt">
+              <input
+                type="radio"
+                name="redirectType"
+                id="rtypeRedirect"
+                value="redirect"
+                checked
+                onchange="onRedirectType(this)"
+              />
+              302 Redirect
+            </label>
+            <label class="rtype-opt">
+              <input
+                type="radio"
+                name="redirectType"
+                id="rtypeMeta"
+                value="meta"
+                onchange="onRedirectType(this)"
+              />
+              Meta refresh
+            </label>
+          </div>
+        </div>
+        <div class="field og-section" id="ogSection" style="display: none">
+          <label class="field-label"
+            >OpenGraph / Meta
+            <span style="color: #a0aec0; font-weight: 400">(optional)</span></label
+          >
+          <div class="field">
+            <input type="text" id="ogTitle" placeholder="Title (og:title)" />
+          </div>
+          <div class="field">
+            <input
+              type="text"
+              id="ogDescription"
+              placeholder="Description (og:description)"
+            />
+          </div>
+          <div class="field" style="margin-bottom: 0">
+            <input
+              type="url"
+              id="ogImage"
+              placeholder="Image URL (og:image)"
+            />
+          </div>
+        </div>
         <button type="submit" class="primary">Shorten</button>
       </form>
 
@@ -142,7 +191,13 @@
           </thead>
           <tbody id="linksBody">
             {{range .URLs}}
-            <tr id="row-{{.Code}}">
+            <tr
+              id="row-{{.Code}}"
+              data-rtype="{{.RedirectType}}"
+              data-og-title="{{.OGTitle}}"
+              data-og-desc="{{.OGDescription}}"
+              data-og-image="{{.OGImage}}"
+            >
               <td class="td-links">
                 {{$pubBase := $.Base}}{{if $.AliasBase}}{{$pubBase =
                 $.AliasBase}}{{end}}
@@ -164,7 +219,7 @@
                     onclick="copyLink(event, this)"
                     id="pub-link-{{.Code}}"
                     >{{stripScheme $pubBase}}/{{.Code}}</a
-                  >
+                  >{{if eq .RedirectType "meta"}}<span class="rtype-badge">META</span>{{end}}
                 </div>
                 <div class="link-line">
                   <button
@@ -371,9 +426,63 @@
             <label class="field-label">Short code</label>
             <input type="text" id="editCodeInput" placeholder="my-code" />
           </div>
-          <div class="field" style="margin-bottom: 0">
+          <div class="field">
             <label class="field-label">Destination URL</label>
             <input type="text" id="editUrlInput" placeholder="https://…" />
+          </div>
+          <div class="field">
+            <label class="field-label">Redirect type</label>
+            <div class="rtype-row">
+              <label class="rtype-opt">
+                <input
+                  type="radio"
+                  name="editRedirectType"
+                  id="editRtypeRedirect"
+                  value="redirect"
+                  onchange="onEditRedirectType(this)"
+                />
+                302 Redirect
+              </label>
+              <label class="rtype-opt">
+                <input
+                  type="radio"
+                  name="editRedirectType"
+                  id="editRtypeMeta"
+                  value="meta"
+                  onchange="onEditRedirectType(this)"
+                />
+                Meta refresh
+              </label>
+            </div>
+          </div>
+          <div class="field og-section" id="editOgSection" style="display: none">
+            <label class="field-label"
+              >OpenGraph / Meta
+              <span style="color: #a0aec0; font-weight: 400"
+                >(optional)</span
+              ></label
+            >
+            <div class="field">
+              <input
+                type="text"
+                id="editOgTitle"
+                placeholder="Title (og:title)"
+              />
+            </div>
+            <div class="field">
+              <input
+                type="text"
+                id="editOgDescription"
+                placeholder="Description (og:description)"
+              />
+            </div>
+            <div class="field" style="margin-bottom: 0">
+              <input
+                type="url"
+                id="editOgImage"
+                placeholder="Image URL (og:image)"
+              />
+            </div>
           </div>
         </div>
         <div class="modal-footer">
