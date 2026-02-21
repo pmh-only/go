@@ -18,6 +18,18 @@ document.addEventListener('DOMContentLoaded', () => {
       document.querySelectorAll('.modal-overlay.open').forEach(el => closeModal(el.id));
     }
   });
+
+  // Auto-fill URL input from clipboard if it looks like a URL
+  const urlInput = document.getElementById('urlInput');
+  if (navigator.clipboard?.readText) {
+    navigator.clipboard.readText().then(text => {
+      text = text.trim();
+      if (text.startsWith('http://') || text.startsWith('https://')) {
+        urlInput.value = text;
+        urlInput.select();
+      }
+    }).catch(() => {});
+  }
 });
 
 /* ── form toggles ── */
@@ -57,6 +69,11 @@ async function shorten(e) {
     if (data.short_url)    rows += urlRow('pub-' + data.code, 'public',   data.short_url,   true);
     if (data.internal_url) rows += urlRow('int-' + data.code, 'internal', data.internal_url, false);
     resultEl.innerHTML = '<div class="result success"><div class="rlabel">Your links</div>' + rows + '</div>';
+
+    // Copy the primary URL to clipboard automatically
+    const toCopy = data.short_url || data.internal_url;
+    if (toCopy && navigator.clipboard?.writeText) navigator.clipboard.writeText(toCopy).catch(() => {});
+
     setTimeout(() => location.reload(), 2000);
   } catch {
     resultEl.innerHTML = '<div class="result error"><div class="rlabel">Error</div>Network error.</div>';
