@@ -1,3 +1,25 @@
+/* ── modals ── */
+function openModal(id) {
+  document.getElementById(id).classList.add('open');
+}
+
+function closeModal(id) {
+  document.getElementById(id).classList.remove('open');
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  // Close on backdrop click
+  document.querySelectorAll('.modal-overlay').forEach(el => {
+    el.addEventListener('click', e => { if (e.target === el) closeModal(el.id); });
+  });
+  // Close on Escape
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') {
+      document.querySelectorAll('.modal-overlay.open').forEach(el => closeModal(el.id));
+    }
+  });
+});
+
 /* ── form toggles ── */
 function onToggle() {
   const pub  = document.getElementById('chkPublic');
@@ -57,7 +79,7 @@ function copyText(id, btn) {
   });
 }
 
-/* ── edit code (ID) ── */
+/* ── edit code (ID) — inline ── */
 function startEditCode(code) {
   const disp = document.getElementById('code-display-' + code);
   disp.style.display = 'none';
@@ -134,12 +156,7 @@ function filterRows(q) {
   if (label) label.textContent = (term ? visible + ' of ' + rows.length : rows.length) + ' entries';
 }
 
-/* ── settings panel ── */
-function toggleSettings() {
-  const p = document.getElementById('settingsPanel');
-  p.style.display = p.style.display === 'none' ? '' : 'none';
-}
-
+/* ── settings modal ── */
 async function saveSettings() {
   const payload = {
     public_base:   document.getElementById('cfgPublicBase').value.trim(),
@@ -149,21 +166,22 @@ async function saveSettings() {
   };
   const res = await fetch('/settings', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
   const fb  = document.getElementById('settingsFeedback');
+  fb.style.display = '';
   if (res.ok) {
     fb.textContent = 'Saved!'; fb.style.color = '#276749';
+    setTimeout(() => closeModal('modalSettings'), 800);
   } else {
     fb.textContent = 'Error saving.'; fb.style.color = '#c53030';
   }
-  fb.style.display = '';
-  setTimeout(() => fb.style.display = 'none', 2500);
+  setTimeout(() => { fb.style.display = 'none'; }, 2500);
 }
 
 /* ── row visibility toggle ── */
 async function rowToggle(code, type, btn) {
-  const isOn   = btn.classList.contains('on');
-  const newVal = !isOn;
-  const row    = document.getElementById('row-' + code);
-  const btns   = row.querySelectorAll('.row-toggle');
+  const isOn    = btn.classList.contains('on');
+  const newVal  = !isOn;
+  const row     = document.getElementById('row-' + code);
+  const btns    = row.querySelectorAll('.row-toggle');
   const otherOn = [...btns].some(b => b !== btn && b.classList.contains('on'));
   if (!newVal && !otherOn) {
     btn.style.outline = '2px solid #fc8181';
@@ -185,41 +203,50 @@ async function rowToggle(code, type, btn) {
   }
 }
 
-/* ── edit destination URL ── */
+/* ── edit destination URL — modal ── */
+let currentEditCode = null;
+
 function startEdit(code, currentURL) {
-  const cell = document.getElementById('orig-' + code);
-  cell.innerHTML =
-    '<input class="edit-input" id="edit-input-' + code + '" value="' + currentURL.replace(/"/g, '&quot;') + '">' +
-    '<div class="act-row">' +
-      '<button class="action-btn btn-save"   onclick="saveEdit(\'' + code + '\')">Save</button>' +
-      '<button class="action-btn btn-cancel" onclick="cancelEdit(\'' + code + '\',\'' + currentURL.replace(/'/g, "\\'") + '\')">Cancel</button>' +
-    '</div>';
-  document.getElementById('edit-input-' + code).focus();
+  currentEditCode = code;
+  const inp = document.getElementById('editUrlInput');
+  inp.value = currentURL;
+  inp.style.borderColor = '';
+  document.getElementById('editFeedback').style.display = 'none';
+  openModal('modalEdit');
+  setTimeout(() => inp.focus(), 50);
 }
 
-async function saveEdit(code) {
-  const input  = document.getElementById('edit-input-' + code);
-  const newURL = input.value.trim();
+async function confirmEdit() {
+  const newURL = document.getElementById('editUrlInput').value.trim();
   if (!newURL) return;
-  const res = await fetch('/urls/' + code, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ long_url: newURL }) });
-  if (!res.ok) { input.style.borderColor = '#fc8181'; return; }
-  const cell  = document.getElementById('orig-' + code);
+  const res = await fetch('/urls/' + currentEditCode, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ long_url: newURL }),
+  });
+  if (!res.ok) {
+    document.getElementById('editUrlInput').style.borderColor = '#fc8181';
+    const fb = document.getElementById('editFeedback');
+    fb.textContent = 'Failed to save.'; fb.style.color = '#c53030'; fb.style.display = '';
+    return;
+  }
+  const cell  = document.getElementById('orig-' + currentEditCode);
   const short = newURL.length > 55 ? newURL.slice(0, 55) + '…' : newURL;
   cell.innerHTML = '<a href="' + newURL + '" target="_blank" style="color:#2b6cb0">' + short + '</a>';
-  const row     = document.getElementById('row-' + code);
-  const pubLink = row.querySelector('.td-links a');
-  if (pubLink && !pubLink.classList.contains('disabled')) pubLink.href = '/' + code;
+  closeModal('modalEdit');
 }
 
-function cancelEdit(code, originalURL) {
-  const cell  = document.getElementById('orig-' + code);
-  const short = originalURL.length > 55 ? originalURL.slice(0, 55) + '…' : originalURL;
-  cell.innerHTML = '<a href="' + originalURL + '" target="_blank" style="color:#2b6cb0">' + short + '</a>';
+/* ── delete — modal ── */
+let currentDeleteCode = null;
+
+function deleteRow(code) {
+  currentDeleteCode = code;
+  document.getElementById('deleteModalCode').textContent = code;
+  openModal('modalDelete');
 }
 
-/* ── delete ── */
-async function deleteRow(code) {
-  if (!confirm('Delete this short URL? This cannot be undone.')) return;
-  const res = await fetch('/urls/' + code, { method: 'DELETE' });
-  if (res.ok) document.getElementById('row-' + code).remove();
+async function confirmDelete() {
+  const res = await fetch('/urls/' + currentDeleteCode, { method: 'DELETE' });
+  if (res.ok) document.getElementById('row-' + currentDeleteCode).remove();
+  closeModal('modalDelete');
 }
