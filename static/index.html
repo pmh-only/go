@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>URL Shortener</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<!-- ── Left: form ── -->
+<aside class="panel-left">
+  <h1>URL Shortener</h1>
+  <p class="subtitle">Paste a long URL and get short links.</p>
+
+  <form id="shortenForm" onsubmit="shorten(event)">
+    <div class="field">
+      <label class="field-label" for="urlInput">Long URL</label>
+      <input type="url" id="urlInput" placeholder="https://example.com/very/long/url" required>
+    </div>
+    <div class="field">
+      <label class="field-label" for="aliasInput">Custom alias <span style="color:#a0aec0;font-weight:400">(optional)</span></label>
+      <div class="form-row">
+        <span class="prefix">{{.Base}}/</span>
+        <input type="text" id="aliasInput" class="alias" placeholder="my-alias"
+               pattern="[a-zA-Z0-9_\-]{1,32}"
+               title="Letters, numbers, hyphens, underscores — max 32 chars">
+      </div>
+    </div>
+    <div class="field">
+      <label class="field-label">Active link types</label>
+      <div class="link-toggles">
+        <label class="link-toggle public on" id="togglePublic">
+          <input type="checkbox" id="chkPublic" checked onchange="onToggle()">
+          <span class="dot"></span>
+          <span class="info">
+            <strong>Public</strong>
+            <small>{{.Base}}/…</small>
+          </span>
+        </label>
+        <label class="link-toggle internal on" id="toggleInternal">
+          <input type="checkbox" id="chkInternal" checked onchange="onToggle()">
+          <span class="dot"></span>
+          <span class="info">
+            <strong>Internal</strong>
+            <small>go/…</small>
+          </span>
+        </label>
+      </div>
+      <p id="toggleErr">At least one link type must be active.</p>
+    </div>
+    <button type="submit" class="primary">Shorten</button>
+  </form>
+
+  <div id="result"></div>
+
+  <!-- ── Settings ── -->
+  <div style="margin-top:auto;padding-top:1.5rem">
+    <button class="settings-toggle" onclick="toggleSettings()" id="settingsBtn">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      Hostnames
+    </button>
+    <div id="settingsPanel" style="display:none;margin-top:.75rem">
+      <div class="field">
+        <label class="field-label">Public base URL</label>
+        <input type="url" id="cfgPublicBase" value="{{.Base}}" placeholder="https://pmh.codes">
+        <small style="color:#a0aec0;font-size:.74rem">Used for public short links</small>
+      </div>
+      <div class="field">
+        <label class="field-label">UI host</label>
+        <input type="text" id="cfgUIHost" value="{{.UIHost}}" placeholder="links.pmh.codes">
+        <small style="color:#a0aec0;font-size:.74rem">Host that serves this web UI</small>
+      </div>
+      <div class="field">
+        <label class="field-label">Internal host</label>
+        <input type="text" id="cfgInternalHost" value="{{.InternalHost}}" placeholder="go">
+        <small style="color:#a0aec0;font-size:.74rem">Host for internal go-links</small>
+      </div>
+      <div class="field">
+        <label class="field-label">Alias host <span style="color:#a0aec0;font-weight:400">(optional)</span></label>
+        <input type="text" id="cfgAliasHost" value="{{.AliasHost}}" placeholder="pmh.so">
+        <small style="color:#a0aec0;font-size:.74rem">Alternate public redirect host (e.g. a shorter domain)</small>
+      </div>
+      <div style="display:flex;gap:.5rem;align-items:center">
+        <button class="action-btn btn-save" style="padding:.5rem 1rem;font-size:.85rem" onclick="saveSettings()">Save</button>
+        <span id="settingsFeedback" style="font-size:.8rem;color:#276749;display:none">Saved!</span>
+      </div>
+    </div>
+  </div>
+</aside>
+
+<!-- ── Right: list ── -->
+<main class="panel-right">
+  <div class="panel-right-header">
+    <h2>All URLs <span class="count" id="countLabel">{{len .URLs}} entries</span></h2>
+    <div class="search-wrap">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <input id="searchInput" type="search" placeholder="Search URLs…" oninput="filterRows(this.value)">
+    </div>
+  </div>
+  <div class="table-wrap">
+    {{if .URLs}}
+    <table>
+      <thead>
+        <tr>
+          <th>Links</th>
+          <th>Original</th>
+          <th>Created</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{range .URLs}}
+        <tr id="row-{{.Code}}">
+          <td class="td-links">
+            <div class="code-row" id="code-display-{{.Code}}">
+              <span class="code-label">{{.Code}}</span>
+              <button class="link-copy" style="opacity:0" onclick="startEditCode('{{.Code}}')">✎</button>
+            </div>
+            <div class="link-line">
+              <a {{if .PublicEnabled}}href="/{{.Code}}" target="_blank"{{else}}class="disabled"{{end}} id="pub-link-{{.Code}}">{{$.Base}}/{{.Code}}</a>
+              <button class="link-copy" onclick="copyRaw('{{$.Base}}/{{.Code}}',this)">Copy</button>
+            </div>
+            <div class="link-line">
+              <a {{if not .InternalEnabled}}class="disabled"{{end}} id="int-link-{{.Code}}">go/{{.Code}}</a>
+              <button class="link-copy" onclick="copyRaw('go/{{.Code}}',this)">Copy</button>
+            </div>
+          </td>
+          <td class="td-original" id="orig-{{.Code}}">
+            <a href="{{.LongURL}}" target="_blank" style="color:#2b6cb0">{{truncate .LongURL 55}}</a>
+          </td>
+          <td class="td-date">{{.CreatedAt}}</td>
+          <td class="td-actions">
+            <div class="actions-row">
+              <div class="vis-row">
+                <button class="row-toggle tag-public {{if .PublicEnabled}}on{{else}}off{{end}}"
+                        onclick="rowToggle('{{.Code}}','public',this)"
+                        title="Toggle public link">Public</button>
+                <button class="row-toggle tag-internal {{if .InternalEnabled}}on{{else}}off{{end}}"
+                        onclick="rowToggle('{{.Code}}','internal',this)"
+                        title="Toggle internal link">Internal</button>
+              </div>
+              <div class="act-row">
+                <button class="action-btn btn-edit" onclick="startEdit('{{.Code}}','{{.LongURL}}')">Edit</button>
+                <button class="action-btn btn-delete" onclick="deleteRow('{{.Code}}')">Delete</button>
+              </div>
+            </div>
+          </td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+    {{else}}
+    <div class="empty-state">
+      <svg width="40" height="40" fill="none" stroke="#cbd5e0" stroke-width="1.5" viewBox="0 0 24 24"><path d="M13.828 10.172a4 4 0 0 0-5.656 0l-4 4a4 4 0 1 0 5.656 5.656l1.102-1.101"/><path d="M10.172 13.828a4 4 0 0 0 5.656 0l4-4a4 4 0 0 0-5.656-5.656l-1.1 1.1"/></svg>
+      <span>No URLs yet — shorten one on the left.</span>
+    </div>
+    {{end}}
+  </div>
+</main>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
