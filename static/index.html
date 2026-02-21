@@ -101,6 +101,16 @@
               />
               Meta refresh
             </label>
+            <label class="rtype-opt">
+              <input
+                type="radio"
+                name="redirectType"
+                id="rtypeJs"
+                value="js"
+                onchange="onRedirectType(this)"
+              />
+              JS redirect
+            </label>
           </div>
         </div>
         <div class="field og-section" id="ogSection" style="display: none">
@@ -125,6 +135,18 @@
               placeholder="Image URL (og:image)"
             />
           </div>
+        </div>
+        <div class="field og-section" id="passwordSection" style="display: none">
+          <label class="field-label"
+            >Password
+            <span style="color: #a0aec0; font-weight: 400">(optional)</span></label
+          >
+          <input
+            type="password"
+            id="passwordInput"
+            placeholder="Set password (optional)"
+            autocomplete="new-password"
+          />
         </div>
         <button type="submit" class="primary">Shorten</button>
       </form>
@@ -197,6 +219,7 @@
               data-og-title="{{.OGTitle}}"
               data-og-desc="{{.OGDescription}}"
               data-og-image="{{.OGImage}}"
+              data-has-password="{{if .HasPassword}}true{{else}}false{{end}}"
             >
               <td class="td-links">
                 {{$pubBase := $.Base}}{{if $.AliasBase}}{{$pubBase =
@@ -219,7 +242,7 @@
                     onclick="copyLink(event, this)"
                     id="pub-link-{{.Code}}"
                     >{{stripScheme $pubBase}}/{{.Code}}</a
-                  >{{if eq .RedirectType "meta"}}<span class="rtype-badge">META</span>{{end}}
+                  >{{if eq .RedirectType "meta"}}<span class="rtype-badge">META</span>{{else if eq .RedirectType "js"}}<span class="rtype-badge rtype-badge--js">JS</span>{{end}}
                 </div>
                 <div class="link-line">
                   <button
@@ -453,6 +476,16 @@
                 />
                 Meta refresh
               </label>
+              <label class="rtype-opt">
+                <input
+                  type="radio"
+                  name="editRedirectType"
+                  id="editRtypeJs"
+                  value="js"
+                  onchange="onEditRedirectType(this)"
+                />
+                JS redirect
+              </label>
             </div>
           </div>
           <div class="field og-section" id="editOgSection" style="display: none">
@@ -483,6 +516,33 @@
                 placeholder="Image URL (og:image)"
               />
             </div>
+          </div>
+          <div
+            class="field og-section"
+            id="editPasswordSection"
+            style="display: none"
+          >
+            <label class="field-label"
+              >Password
+              <span style="color: #a0aec0; font-weight: 400"
+                >(optional)</span
+              ></label
+            >
+            <input
+              type="password"
+              id="editPassword"
+              placeholder="Set password (optional)"
+              autocomplete="new-password"
+            />
+            <button
+              type="button"
+              id="editClearPwBtn"
+              class="clear-pw-btn"
+              onclick="clearEditPassword()"
+              style="display: none"
+            >
+              Remove password
+            </button>
           </div>
         </div>
         <div class="modal-footer">

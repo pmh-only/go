@@ -61,13 +61,30 @@ function copyLink(e, el) {
 
 /* ── redirect type ── */
 function onRedirectType(radio) {
+  const isJs = radio.value === "js";
+  const isMeta = radio.value === "meta";
   document.getElementById("ogSection").style.display =
-    radio.value === "meta" ? "" : "none";
+    isJs || isMeta ? "" : "none";
+  document.getElementById("passwordSection").style.display =
+    isJs ? "" : "none";
 }
 
 function onEditRedirectType(radio) {
+  const isJs = radio.value === "js";
+  const isMeta = radio.value === "meta";
   document.getElementById("editOgSection").style.display =
-    radio.value === "meta" ? "" : "none";
+    isJs || isMeta ? "" : "none";
+  document.getElementById("editPasswordSection").style.display =
+    isJs ? "" : "none";
+}
+
+let editPasswordCleared = false;
+
+function clearEditPassword() {
+  editPasswordCleared = true;
+  document.getElementById("editPassword").value = "";
+  document.getElementById("editPassword").placeholder = "No password (cleared)";
+  document.getElementById("editClearPwBtn").style.display = "none";
 }
 
 /* ── form toggles ── */
@@ -112,6 +129,7 @@ async function shorten(e) {
     og_title: document.getElementById("ogTitle").value.trim(),
     og_description: document.getElementById("ogDescription").value.trim(),
     og_image: document.getElementById("ogImage").value.trim(),
+    password: document.getElementById("passwordInput").value,
   };
   if (alias) payload.custom_code = alias;
 
@@ -144,6 +162,8 @@ async function shorten(e) {
     document.getElementById("ogImage").value = "";
     document.getElementById("rtypeRedirect").checked = true;
     document.getElementById("ogSection").style.display = "none";
+    document.getElementById("passwordInput").value = "";
+    document.getElementById("passwordSection").style.display = "none";
 
     // Insert new row at top of table
     insertNewRow(data);
@@ -174,7 +194,11 @@ function insertNewRow(data) {
   const pubToggle = `<button class="row-toggle tag-public ${pubEnabled ? "on" : "off"}" onclick="rowToggle('${code}','public',this)" title="Toggle public link">P</button>`;
   const intToggle = `<button class="row-toggle tag-internal ${intEnabled ? "on" : "off"}" onclick="rowToggle('${code}','internal',this)" title="Toggle internal link">I</button>`;
   const metaBadge =
-    redirectType === "meta" ? `<span class="rtype-badge">META</span>` : "";
+    redirectType === "meta"
+      ? `<span class="rtype-badge">META</span>`
+      : redirectType === "js"
+        ? `<span class="rtype-badge rtype-badge--js">JS</span>`
+        : "";
 
   const longURLEscaped = longURL.replace(/'/g, "\\'");
   const tr = document.createElement("tr");
@@ -184,6 +208,7 @@ function insertNewRow(data) {
   tr.dataset.ogTitle = data.og_title || "";
   tr.dataset.ogDesc = data.og_description || "";
   tr.dataset.ogImage = data.og_image || "";
+  tr.dataset.hasPassword = data.has_password ? "true" : "false";
   tr.innerHTML = `
     <td class="td-links">
       <div class="link-line">${pubToggle}${pubLink}${metaBadge}</div>
@@ -354,17 +379,29 @@ function startEdit(code, currentURL) {
   urlInp.style.borderColor = "";
   document.getElementById("editFeedback").style.display = "none";
 
-  // Restore redirect type + OG from row data attributes
+  // Restore redirect type + OG + password from row data attributes
+  editPasswordCleared = false;
   const row = document.getElementById("row-" + code);
   const rtype = row?.dataset.rtype || "redirect";
-  document.getElementById("editRtypeRedirect").checked = rtype !== "meta";
+  const hasPassword = row?.dataset.hasPassword === "true";
+  document.getElementById("editRtypeRedirect").checked = rtype === "redirect";
   document.getElementById("editRtypeMeta").checked = rtype === "meta";
+  document.getElementById("editRtypeJs").checked = rtype === "js";
   document.getElementById("editOgSection").style.display =
-    rtype === "meta" ? "" : "none";
+    rtype === "meta" || rtype === "js" ? "" : "none";
   document.getElementById("editOgTitle").value = row?.dataset.ogTitle || "";
   document.getElementById("editOgDescription").value =
     row?.dataset.ogDesc || "";
   document.getElementById("editOgImage").value = row?.dataset.ogImage || "";
+  document.getElementById("editPasswordSection").style.display =
+    rtype === "js" ? "" : "none";
+  const pwInput = document.getElementById("editPassword");
+  const clearBtn = document.getElementById("editClearPwBtn");
+  pwInput.value = "";
+  pwInput.placeholder = hasPassword
+    ? "New password (leave blank to keep)"
+    : "Set password (optional)";
+  clearBtn.style.display = hasPassword ? "" : "none";
 
   openModal("modalEdit");
   setTimeout(() => codeInp.focus(), 50);
@@ -385,6 +422,14 @@ async function confirmEdit() {
     og_description: document.getElementById("editOgDescription").value.trim(),
     og_image: document.getElementById("editOgImage").value.trim(),
   };
+  if (rtype === "js") {
+    if (editPasswordCleared) {
+      body.password = "";
+    } else {
+      const pw = document.getElementById("editPassword").value;
+      if (pw) body.password = pw;
+    }
+  }
   if (newCode && newCode !== currentEditCode) body.code = newCode;
 
   const res = await fetch("/urls/" + currentEditCode, {
@@ -445,25 +490,37 @@ async function confirmEdit() {
     });
   }
 
-  // Update row data attributes + META badge
+  // Update row data attributes + redirect badge
   const rowEl = document.getElementById("row-" + effectiveCode);
   if (rowEl) {
     rowEl.dataset.rtype = rtype;
     rowEl.dataset.ogTitle = body.og_title;
     rowEl.dataset.ogDesc = body.og_description;
     rowEl.dataset.ogImage = body.og_image;
+    if (body.password !== undefined) {
+      rowEl.dataset.hasPassword = body.password ? "true" : "false";
+    }
   }
   const pubLinkEl = document.getElementById("pub-link-" + effectiveCode);
   if (pubLinkEl) {
     const linkLine = pubLinkEl.closest(".link-line");
-    const existingBadge = linkLine.querySelector(".rtype-badge");
-    if (rtype === "meta" && !existingBadge) {
-      const badge = document.createElement("span");
+    let badge = linkLine.querySelector(".rtype-badge");
+    if (rtype === "meta") {
+      if (!badge) {
+        badge = document.createElement("span");
+        linkLine.appendChild(badge);
+      }
       badge.className = "rtype-badge";
       badge.textContent = "META";
-      linkLine.appendChild(badge);
-    } else if (rtype !== "meta" && existingBadge) {
-      existingBadge.remove();
+    } else if (rtype === "js") {
+      if (!badge) {
+        badge = document.createElement("span");
+        linkLine.appendChild(badge);
+      }
+      badge.className = "rtype-badge rtype-badge--js";
+      badge.textContent = "JS";
+    } else if (badge) {
+      badge.remove();
     }
   }
 

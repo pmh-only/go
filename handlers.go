@@ -1,8 +1,10 @@
 package main
 
 import (
+	"crypto/sha256"
 	"database/sql"
 	"embed"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"html/template"
@@ -13,6 +15,11 @@ import (
 
 	qrcode "github.com/skip2/go-qrcode"
 )
+
+func hashPassword(pw string) string {
+	h := sha256.Sum256([]byte(pw))
+	return hex.EncodeToString(h[:])
+}
 
 //go:embed static
 var staticFiles embed.FS
@@ -74,6 +81,50 @@ var metaRedirectTmpl = template.Must(template.New("meta").Parse(`<!DOCTYPE html>
 <body><p>Redirecting… <a href="{{.LongURL}}">click here</a></p></body>
 </html>`))
 
+var jsRedirectTmpl = template.Must(
+	template.New("js").Funcs(template.FuncMap{
+		"jsStr": func(s string) template.JS {
+			b, _ := json.Marshal(s)
+			return template.JS(b)
+		},
+	}).Parse(`<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8">
+<meta name="robots" content="noindex,nofollow">
+{{if .OGTitle}}<title>{{.OGTitle}}</title>
+<meta property="og:title" content="{{.OGTitle}}">
+<meta name="twitter:title" content="{{.OGTitle}}">{{end}}
+{{if .OGDescription}}<meta property="og:description" content="{{.OGDescription}}">
+<meta name="twitter:description" content="{{.OGDescription}}">{{end}}
+{{if .OGImage}}<meta property="og:image" content="{{.OGImage}}">
+<meta name="twitter:image" content="{{.OGImage}}">
+<meta name="twitter:card" content="summary_large_image">{{else}}<meta name="twitter:card" content="summary">{{end}}
+<meta property="og:type" content="website">
+<meta property="og:url" content="{{.ShortURL}}">
+<style>:root{color-scheme:light dark}body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background-color:Canvas;color:CanvasText;font-family:system-ui,sans-serif;font-size:.9rem}a{color:LinkText}form{display:flex;flex-direction:column;align-items:center;gap:.6rem}input[type=password]{padding:.5rem .75rem;border:1.5px solid #cbd5e0;border-radius:6px;font-size:.9rem;outline:none;width:220px;background:Canvas;color:CanvasText}button{padding:.5rem 1.25rem;background:#667eea;color:#fff;border:none;border-radius:6px;font-size:.9rem;cursor:pointer}#pw-err{color:#c53030;font-size:.8rem}</style>
+</head>
+<body>{{if .HasPassword}}<div style="text-align:center">
+<p style="margin-bottom:.9rem">🔒 This link is password protected.</p>
+<form id="pw-form">
+<input type="password" id="pw-input" placeholder="Enter password" autofocus>
+<button type="submit">Continue →</button>
+<p id="pw-err" style="display:none">Incorrect password.</p>
+</form>
+</div>
+<script>
+document.getElementById('pw-form').onsubmit=async function(e){
+e.preventDefault();
+var r=await fetch('/pass/'+{{jsStr .Code}},{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:document.getElementById('pw-input').value})});
+if(r.ok){var d=await r.json();window.location.replace(d.url);}
+else{document.getElementById('pw-err').style.display='';document.getElementById('pw-input').value='';document.getElementById('pw-input').focus();}
+};
+</script>{{else}}
+<p>Redirecting… <a href="{{.LongURL}}">click here</a></p>
+<script>window.location.replace({{jsStr .LongURL}});</script>
+{{end}}
+</body>
+</html>`))
+
 func renderIndex(w http.ResponseWriter, r *http.Request) {
 	urls, _ := getAllURLs()
 	pb, _, uh, ih, ah := cfg.snapshot()
@@ -115,6 +166,7 @@ func shortenHandler(w http.ResponseWriter, r *http.Request) {
 		OGTitle         string `json:"og_title"`
 		OGDescription   string `json:"og_description"`
 		OGImage         string `json:"og_image"`
+		Password        string `json:"password"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || strings.TrimSpace(body.URL) == "" {
 		jsonError(w, http.StatusBadRequest, "invalid JSON or missing url field")
@@ -132,10 +184,14 @@ func shortenHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	redirectType := body.RedirectType
-	if redirectType != "meta" {
+	if redirectType != "meta" && redirectType != "js" {
 		redirectType = "redirect"
 	}
 	ogTitle, ogDescription, ogImage := body.OGTitle, body.OGDescription, body.OGImage
+	passwordHash := ""
+	if body.Password != "" {
+		passwordHash = hashPassword(body.Password)
+	}
 
 	var code string
 	if customCode != "" {
@@ -143,7 +199,7 @@ func shortenHandler(w http.ResponseWriter, r *http.Request) {
 			jsonError(w, http.StatusBadRequest, "custom alias must be 1–32 chars: letters, numbers, hyphens, underscores")
 			return
 		}
-		if err := saveURL(customCode, longURL, publicEnabled, internalEnabled, redirectType, ogTitle, ogDescription, ogImage); err != nil {
+		if err := saveURL(customCode, longURL, publicEnabled, internalEnabled, redirectType, ogTitle, ogDescription, ogImage, passwordHash); err != nil {
 			if strings.Contains(err.Error(), "UNIQUE constraint failed") {
 				jsonError(w, http.StatusConflict, fmt.Sprintf("alias '%s' is already taken", customCode))
 			} else {
@@ -160,7 +216,7 @@ func shortenHandler(w http.ResponseWriter, r *http.Request) {
 				jsonError(w, http.StatusInternalServerError, "internal error")
 				return
 			}
-			err = saveURL(code, longURL, publicEnabled, internalEnabled, redirectType, ogTitle, ogDescription, ogImage)
+			err = saveURL(code, longURL, publicEnabled, internalEnabled, redirectType, ogTitle, ogDescription, ogImage, passwordHash)
 			if err == nil {
 				break
 			}
@@ -182,6 +238,7 @@ func shortenHandler(w http.ResponseWriter, r *http.Request) {
 		"og_title":         ogTitle,
 		"og_description":   ogDescription,
 		"og_image":         ogImage,
+		"has_password":     passwordHash != "",
 	}
 	if publicEnabled {
 		resp["short_url"] = fmt.Sprintf("%s/%s", pb, code)
@@ -231,6 +288,7 @@ func urlsPatchHandler(w http.ResponseWriter, r *http.Request, code string) {
 		OGTitle         *string `json:"og_title"`
 		OGDescription   *string `json:"og_description"`
 		OGImage         *string `json:"og_image"`
+		Password        *string `json:"password"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		jsonError(w, http.StatusBadRequest, "invalid JSON")
@@ -261,9 +319,19 @@ func urlsPatchHandler(w http.ResponseWriter, r *http.Request, code string) {
 	}
 
 	// Sanitize redirect_type
-	if body.RedirectType != nil && *body.RedirectType != "meta" {
+	if body.RedirectType != nil && *body.RedirectType != "meta" && *body.RedirectType != "js" {
 		rt := "redirect"
 		body.RedirectType = &rt
+	}
+
+	// Compute password hash if provided
+	var passwordHash *string
+	if body.Password != nil {
+		h := ""
+		if *body.Password != "" {
+			h = hashPassword(*body.Password)
+		}
+		passwordHash = &h
 	}
 
 	// Rename: INSERT with new code (preserving created_at) then DELETE old (code is PK)
@@ -293,6 +361,10 @@ func urlsPatchHandler(w http.ResponseWriter, r *http.Request, code string) {
 		if body.OGImage != nil {
 			ogi = *body.OGImage
 		}
+		opw := rec.PasswordHash
+		if passwordHash != nil {
+			opw = *passwordHash
+		}
 		tx, err := db.Begin()
 		if err != nil {
 			jsonError(w, http.StatusInternalServerError, "database error")
@@ -300,8 +372,8 @@ func urlsPatchHandler(w http.ResponseWriter, r *http.Request, code string) {
 		}
 		defer tx.Rollback()
 		if _, err := tx.Exec(
-			"INSERT INTO urls (code, long_url, public_enabled, internal_enabled, redirect_type, og_title, og_description, og_image, created_at) SELECT ?, ?, ?, ?, ?, ?, ?, ?, created_at FROM urls WHERE code = ?",
-			newCode, lu, boolToInt(nextPub), boolToInt(nextInt), rt, ogt, ogd, ogi, code,
+			"INSERT INTO urls (code, long_url, public_enabled, internal_enabled, redirect_type, og_title, og_description, og_image, password_hash, created_at) SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, created_at FROM urls WHERE code = ?",
+			newCode, lu, boolToInt(nextPub), boolToInt(nextInt), rt, ogt, ogd, ogi, opw, code,
 		); err != nil {
 			if strings.Contains(err.Error(), "UNIQUE constraint failed") {
 				jsonError(w, http.StatusConflict, fmt.Sprintf("code '%s' is already taken", newCode))
@@ -322,7 +394,7 @@ func urlsPatchHandler(w http.ResponseWriter, r *http.Request, code string) {
 		return
 	}
 
-	if err := updateURL(code, body.LongURL, body.PublicEnabled, body.InternalEnabled, body.RedirectType, body.OGTitle, body.OGDescription, body.OGImage); err != nil {
+	if err := updateURL(code, body.LongURL, body.PublicEnabled, body.InternalEnabled, body.RedirectType, body.OGTitle, body.OGDescription, body.OGImage, passwordHash); err != nil {
 		jsonError(w, http.StatusInternalServerError, "database error")
 		return
 	}
@@ -385,6 +457,44 @@ func settingsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func passHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	code := strings.TrimPrefix(r.URL.Path, "/pass/")
+	if code == "" {
+		http.NotFound(w, r)
+		return
+	}
+	var body struct {
+		Password string `json:"password"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		jsonError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	rec, err := getRecord(code)
+	if err == sql.ErrNoRows {
+		http.NotFound(w, r)
+		return
+	}
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	if rec.PasswordHash == "" {
+		jsonError(w, http.StatusBadRequest, "no password set")
+		return
+	}
+	if hashPassword(body.Password) != rec.PasswordHash {
+		jsonError(w, http.StatusUnauthorized, "incorrect password")
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"url": rec.LongURL})
+}
+
 func qrHandler(w http.ResponseWriter, r *http.Request) {
 	code := strings.TrimPrefix(r.URL.Path, "/qr/")
 	if code == "" {
@@ -435,17 +545,22 @@ func doRedirect(w http.ResponseWriter, r *http.Request, code string, internal bo
 		http.Error(w, "public link disabled", http.StatusNotFound)
 		return
 	}
-	if rec.RedirectType == "meta" {
+	if rec.RedirectType == "meta" || rec.RedirectType == "js" {
 		pb, _, _, _, _ := cfg.snapshot()
 		ab := cfg.aliasBase()
 		shortURL := fmt.Sprintf("%s/%s", pb, code)
 		if ab != "" {
 			shortURL = fmt.Sprintf("%s/%s", ab, code)
 		}
+		tmpl := metaRedirectTmpl
+		if rec.RedirectType == "js" {
+			tmpl = jsRedirectTmpl
+		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		metaRedirectTmpl.Execute(w, struct {
-			LongURL, ShortURL, OGTitle, OGDescription, OGImage string
-		}{rec.LongURL, shortURL, rec.OGTitle, rec.OGDescription, rec.OGImage})
+		tmpl.Execute(w, struct {
+			LongURL, ShortURL, OGTitle, OGDescription, OGImage, Code string
+			HasPassword                                               bool
+		}{rec.LongURL, shortURL, rec.OGTitle, rec.OGDescription, rec.OGImage, code, rec.PasswordHash != ""})
 		return
 	}
 	http.Redirect(w, r, rec.LongURL, http.StatusFound)
@@ -471,6 +586,8 @@ func apiRouter(w http.ResponseWriter, r *http.Request) bool {
 		settingsHandler(w, r)
 	case strings.HasPrefix(r.URL.Path, "/qr/"):
 		qrHandler(w, r)
+	case strings.HasPrefix(r.URL.Path, "/pass/"):
+		passHandler(w, r)
 	default:
 		return false
 	}

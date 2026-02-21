@@ -40,6 +40,8 @@ var migrations = [][]string{
 		`ALTER TABLE urls ADD COLUMN og_description TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE urls ADD COLUMN og_image       TEXT NOT NULL DEFAULT ''`,
 	},
+	// v4: optional password protection for JS redirects
+	{`ALTER TABLE urls ADD COLUMN password_hash TEXT NOT NULL DEFAULT ''`},
 }
 
 func initDB() error {
@@ -114,6 +116,7 @@ type urlRecord struct {
 	OGTitle         string
 	OGDescription   string
 	OGImage         string
+	PasswordHash    string
 }
 
 // URLRow is used to render the URL list in the template.
@@ -126,15 +129,16 @@ type URLRow struct {
 	OGTitle         string
 	OGDescription   string
 	OGImage         string
+	HasPassword     bool
 	CreatedAt       string
 }
 
-func saveURL(code, longURL string, publicEnabled, internalEnabled bool, redirectType, ogTitle, ogDescription, ogImage string) error {
+func saveURL(code, longURL string, publicEnabled, internalEnabled bool, redirectType, ogTitle, ogDescription, ogImage, passwordHash string) error {
 	_, err := db.Exec(
-		`INSERT INTO urls (code, long_url, public_enabled, internal_enabled, redirect_type, og_title, og_description, og_image, created_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO urls (code, long_url, public_enabled, internal_enabled, redirect_type, og_title, og_description, og_image, password_hash, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		code, longURL, boolToInt(publicEnabled), boolToInt(internalEnabled),
-		redirectType, ogTitle, ogDescription, ogImage,
+		redirectType, ogTitle, ogDescription, ogImage, passwordHash,
 		time.Now().UTC().Format("2006-01-02 15:04:05"),
 	)
 	return err
@@ -144,9 +148,9 @@ func getRecord(code string) (urlRecord, error) {
 	var r urlRecord
 	var pub, int_ int
 	err := db.QueryRow(
-		`SELECT long_url, public_enabled, internal_enabled, redirect_type, og_title, og_description, og_image
+		`SELECT long_url, public_enabled, internal_enabled, redirect_type, og_title, og_description, og_image, password_hash
 		 FROM urls WHERE code = ?`, code,
-	).Scan(&r.LongURL, &pub, &int_, &r.RedirectType, &r.OGTitle, &r.OGDescription, &r.OGImage)
+	).Scan(&r.LongURL, &pub, &int_, &r.RedirectType, &r.OGTitle, &r.OGDescription, &r.OGImage, &r.PasswordHash)
 	r.PublicEnabled = pub == 1
 	r.InternalEnabled = int_ == 1
 	return r, err
@@ -154,7 +158,7 @@ func getRecord(code string) (urlRecord, error) {
 
 func getAllURLs() ([]URLRow, error) {
 	rows, err := db.Query(
-		`SELECT code, long_url, public_enabled, internal_enabled, redirect_type, og_title, og_description, og_image, created_at
+		`SELECT code, long_url, public_enabled, internal_enabled, redirect_type, og_title, og_description, og_image, password_hash, created_at
 		 FROM urls ORDER BY created_at DESC`,
 	)
 	if err != nil {
@@ -166,17 +170,19 @@ func getAllURLs() ([]URLRow, error) {
 	for rows.Next() {
 		var r URLRow
 		var pub, int_ int
-		if err := rows.Scan(&r.Code, &r.LongURL, &pub, &int_, &r.RedirectType, &r.OGTitle, &r.OGDescription, &r.OGImage, &r.CreatedAt); err != nil {
+		var passwordHash string
+		if err := rows.Scan(&r.Code, &r.LongURL, &pub, &int_, &r.RedirectType, &r.OGTitle, &r.OGDescription, &r.OGImage, &passwordHash, &r.CreatedAt); err != nil {
 			return nil, err
 		}
 		r.PublicEnabled = pub == 1
 		r.InternalEnabled = int_ == 1
+		r.HasPassword = passwordHash != ""
 		urls = append(urls, r)
 	}
 	return urls, rows.Err()
 }
 
-func updateURL(code string, longURL *string, publicEnabled, internalEnabled *bool, redirectType, ogTitle, ogDescription, ogImage *string) error {
+func updateURL(code string, longURL *string, publicEnabled, internalEnabled *bool, redirectType, ogTitle, ogDescription, ogImage, passwordHash *string) error {
 	var sets []string
 	var args []any
 
@@ -207,6 +213,10 @@ func updateURL(code string, longURL *string, publicEnabled, internalEnabled *boo
 	if ogImage != nil {
 		sets = append(sets, "og_image = ?")
 		args = append(args, *ogImage)
+	}
+	if passwordHash != nil {
+		sets = append(sets, "password_hash = ?")
+		args = append(args, *passwordHash)
 	}
 	if len(sets) == 0 {
 		return nil

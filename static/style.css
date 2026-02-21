@@ -647,6 +647,21 @@ td.td-actions {
   letter-spacing: 0.03em;
   text-transform: uppercase;
 }
+.rtype-badge--js {
+  background: #fef3c7;
+  color: #92400e;
+}
+.clear-pw-btn {
+  display: block;
+  margin-top: 0.4rem;
+  font-size: 0.75rem;
+  color: #c53030;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+}
 
 /* ── Mobile ── */
 @media (max-width: 700px) {
