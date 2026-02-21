@@ -60,6 +60,41 @@ func effectiveHost(r *http.Request) string {
 // buildVersion is injected at build time via -ldflags "-X main.buildVersion=..."
 var buildVersion string
 
+// hostOf strips the scheme and trailing slash from a base URL, returning just the host.
+func hostOf(u string) string {
+	u = strings.TrimPrefix(u, "https://")
+	u = strings.TrimPrefix(u, "http://")
+	return strings.TrimRight(u, "/")
+}
+
+// isAllowedOrigin reports whether the CORS origin matches the public base or alias base.
+func isAllowedOrigin(origin, pb, ab string) bool {
+	if origin == "" {
+		return false
+	}
+	originHost := hostOf(origin)
+	if h := hostOf(pb); h != "" && originHost == h {
+		return true
+	}
+	if ab != "" {
+		if h := hostOf(ab); h != "" && originHost == h {
+			return true
+		}
+	}
+	return false
+}
+
+// requestScheme returns the scheme of the incoming request, honouring X-Forwarded-Proto.
+func requestScheme(r *http.Request) string {
+	if proto := r.Header.Get("X-Forwarded-Proto"); proto != "" {
+		return proto
+	}
+	if r.TLS != nil {
+		return "https"
+	}
+	return "http"
+}
+
 var metaRedirectTmpl = template.Must(template.New("meta").Parse(`<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -114,7 +149,7 @@ var jsRedirectTmpl = template.Must(
 <script>
 document.getElementById('pw-form').onsubmit=async function(e){
 e.preventDefault();
-var r=await fetch('/pass/'+{{jsStr .Code}},{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:document.getElementById('pw-input').value})});
+var r=await fetch({{jsStr .PassURL}},{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:document.getElementById('pw-input').value})});
 if(r.ok){var d=await r.json();window.location.replace(d.url);}
 else{document.getElementById('pw-err').style.display='';document.getElementById('pw-input').value='';document.getElementById('pw-input').focus();}
 };
@@ -466,6 +501,20 @@ func settingsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func passHandler(w http.ResponseWriter, r *http.Request) {
+	// CORS: allow the public base URL and alias host to call this endpoint
+	// (JS redirect pages served from those domains POST here cross-origin).
+	pb, _, _, _, _ := cfg.snapshot()
+	ab := cfg.aliasBase()
+	if origin := r.Header.Get("Origin"); isAllowedOrigin(origin, pb, ab) {
+		w.Header().Set("Access-Control-Allow-Origin", origin)
+		w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		w.Header().Set("Vary", "Origin")
+	}
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -554,11 +603,22 @@ func doRedirect(w http.ResponseWriter, r *http.Request, code string, internal bo
 		return
 	}
 	if rec.RedirectType == "meta" || rec.RedirectType == "js" {
-		pb, _, _, _, _ := cfg.snapshot()
+		pb, _, uh, _, _ := cfg.snapshot()
 		ab := cfg.aliasBase()
 		shortURL := fmt.Sprintf("%s/%s", pb, code)
 		if ab != "" {
 			shortURL = fmt.Sprintf("%s/%s", ab, code)
+		}
+		// passURL: internal redirects share the same router so a relative path works;
+		// public/alias redirects must use the absolute webui URL because /pass/ is
+		// only registered on the UI and internal routers.
+		passURL := "/pass/" + code
+		if !internal {
+			uiHost := uh
+			if uiHost == "" {
+				uiHost = effectiveHost(r)
+			}
+			passURL = requestScheme(r) + "://" + uiHost + "/pass/" + code
 		}
 		tmpl := metaRedirectTmpl
 		if rec.RedirectType == "js" {
@@ -566,9 +626,9 @@ func doRedirect(w http.ResponseWriter, r *http.Request, code string, internal bo
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		tmpl.Execute(w, struct {
-			LongURL, ShortURL, OGTitle, OGDescription, OGImage, Code string
-			HasPassword                                               bool
-		}{rec.LongURL, shortURL, rec.OGTitle, rec.OGDescription, rec.OGImage, code, rec.PasswordHash != ""})
+			LongURL, ShortURL, OGTitle, OGDescription, OGImage, Code, PassURL string
+			HasPassword                                                        bool
+		}{rec.LongURL, shortURL, rec.OGTitle, rec.OGDescription, rec.OGImage, code, passURL, rec.PasswordHash != ""})
 		return
 	}
 	http.Redirect(w, r, rec.LongURL, http.StatusFound)
