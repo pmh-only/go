@@ -120,6 +120,7 @@
                         title="Toggle internal link">Internal</button>
               </div>
               <div class="act-row">
+                <button class="action-btn btn-qr" onclick="showQR('{{.Code}}')">QR</button>
                 <button class="action-btn btn-edit" onclick="startEdit('{{.Code}}','{{.LongURL}}')">Edit</button>
                 <button class="action-btn btn-delete" onclick="deleteRow('{{.Code}}')">Delete</button>
               </div>
@@ -215,6 +216,26 @@
     </div>
   </div>
 </div>
+
+<div id="modalQR" class="modal-overlay">
+  <div class="modal-box modal-box--sm">
+    <div class="modal-header">
+      <h3>QR Code</h3>
+      <button class="modal-close" onclick="closeModal('modalQR')">✕</button>
+    </div>
+    <div class="modal-body qr-body">
+      <img id="qrImage" src="" alt="QR Code">
+      <div class="qr-actions">
+        <button class="action-btn btn-save" onclick="copyQR()">Copy image</button>
+        <button class="action-btn btn-edit" onclick="downloadQR()">Download</button>
+        <a id="qrViewLink" href="" target="_blank" class="action-btn btn-cancel">View</a>
+      </div>
+      <span id="qrFeedback" class="modal-feedback" style="text-align:center"></span>
+    </div>
+  </div>
+</div>
+
+{{if .BuildVersion}}<div class="build-badge">{{.BuildVersion}}</div>{{end}}
 
 <script src="/static/app.js"></script>
 </body>

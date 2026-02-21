@@ -38,8 +38,9 @@ jobs:
 
       - name: Build binaries
         run: |
-          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o go-amd64 .
-          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o go-arm64 .
+          BUILD_VERSION=$(git log -1 --pretty=%s)
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w -X main.buildVersion=${BUILD_VERSION}" -o go-amd64 .
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags="-s -w -X main.buildVersion=${BUILD_VERSION}" -o go-arm64 .
 
       - name: Log in to GHCR
         uses: docker/login-action@v3

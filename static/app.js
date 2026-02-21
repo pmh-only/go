@@ -141,6 +141,7 @@ function insertNewRow(data) {
           <button class="row-toggle tag-internal ${intEnabled ? 'on' : 'off'}" onclick="rowToggle('${code}','internal',this)" title="Toggle internal link">Internal</button>
         </div>
         <div class="act-row">
+          <button class="action-btn btn-qr" onclick="showQR('${code}')">QR</button>
           <button class="action-btn btn-edit" onclick="startEdit('${code}','${longURLEscaped}')">Edit</button>
           <button class="action-btn btn-delete" onclick="deleteRow('${code}')">Delete</button>
         </div>
@@ -275,6 +276,39 @@ async function saveSettings() {
     fb.textContent = 'Error saving.'; fb.style.color = '#c53030';
   }
   setTimeout(() => { fb.style.display = 'none'; }, 2500);
+}
+
+/* ── QR code modal ── */
+let currentQRCode = null;
+
+function showQR(code) {
+  currentQRCode = code;
+  const img = document.getElementById('qrImage');
+  img.src = '/qr/' + code;
+  document.getElementById('qrViewLink').href = '/qr/' + code;
+  document.getElementById('qrFeedback').style.display = 'none';
+  openModal('modalQR');
+}
+
+async function copyQR() {
+  try {
+    const res  = await fetch('/qr/' + currentQRCode);
+    const blob = await res.blob();
+    await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+    const fb = document.getElementById('qrFeedback');
+    fb.textContent = 'Copied!'; fb.style.color = '#276749'; fb.style.display = '';
+    setTimeout(() => { fb.style.display = 'none'; }, 2000);
+  } catch {
+    const fb = document.getElementById('qrFeedback');
+    fb.textContent = 'Copy failed — try Download instead.'; fb.style.color = '#c53030'; fb.style.display = '';
+  }
+}
+
+function downloadQR() {
+  const a = document.createElement('a');
+  a.href = '/qr/' + currentQRCode;
+  a.download = currentQRCode + '-qr.png';
+  a.click();
 }
 
 /* ── row visibility toggle ── */

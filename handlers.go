@@ -10,6 +10,8 @@ import (
 	"log"
 	"net/http"
 	"strings"
+
+	qrcode "github.com/skip2/go-qrcode"
 )
 
 //go:embed static
@@ -48,6 +50,9 @@ func effectiveHost(r *http.Request) string {
 	return h
 }
 
+// buildVersion is injected at build time via -ldflags "-X main.buildVersion=..."
+var buildVersion string
+
 func renderIndex(w http.ResponseWriter, r *http.Request) {
 	urls, _ := getAllURLs()
 	pb, _, uh, ih, ah := cfg.snapshot()
@@ -59,7 +64,8 @@ func renderIndex(w http.ResponseWriter, r *http.Request) {
 		UIHost       string
 		InternalHost string
 		AliasHost    string
-	}{URLs: urls, Base: pb, AliasBase: cfg.aliasBase(), UIHost: uh, InternalHost: ih, AliasHost: ah}
+		BuildVersion string
+	}{URLs: urls, Base: pb, AliasBase: cfg.aliasBase(), UIHost: uh, InternalHost: ih, AliasHost: ah, BuildVersion: buildVersion}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := indexTmpl.Execute(w, data); err != nil {
@@ -322,6 +328,38 @@ func settingsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func qrHandler(w http.ResponseWriter, r *http.Request) {
+	code := strings.TrimPrefix(r.URL.Path, "/qr/")
+	if code == "" {
+		http.NotFound(w, r)
+		return
+	}
+	rec, err := getRecord(code)
+	if err == sql.ErrNoRows {
+		http.NotFound(w, r)
+		return
+	}
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	pb, _, _, _, _ := cfg.snapshot()
+	ab := cfg.aliasBase()
+	pubURL := fmt.Sprintf("%s/%s", pb, code)
+	if ab != "" {
+		pubURL = fmt.Sprintf("%s/%s", ab, code)
+	}
+	_ = rec // record exists; use its public URL
+	png, err := qrcode.Encode(pubURL, qrcode.High, 512)
+	if err != nil {
+		http.Error(w, "qr error", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "image/png")
+	w.Header().Set("Cache-Control", "public, max-age=3600")
+	w.Write(png)
+}
+
 func doRedirect(w http.ResponseWriter, r *http.Request, code string, internal bool) {
 	rec, err := getRecord(code)
 	if err == sql.ErrNoRows {
@@ -361,6 +399,8 @@ func apiRouter(w http.ResponseWriter, r *http.Request) bool {
 		urlsHandler(w, r)
 	case r.URL.Path == "/settings":
 		settingsHandler(w, r)
+	case strings.HasPrefix(r.URL.Path, "/qr/"):
+		qrHandler(w, r)
 	default:
 		return false
 	}
