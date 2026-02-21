@@ -163,8 +163,29 @@ td.td-original { max-width: 280px; word-break: break-all; }
 td.td-date { white-space: nowrap; color: #a0aec0; font-size: .78rem; }
 
 .link-line { display: flex; align-items: center; gap: .3rem; margin-bottom: .18rem; }
-.link-line a { color: #2b6cb0; font-size: .82rem; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.link-line a.disabled { color: #a0aec0; text-decoration: line-through; pointer-events: none; }
+.link-line a {
+  position: relative;
+  color: #2b6cb0; font-size: .82rem; flex: 1; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  cursor: copy; text-decoration: none;
+}
+.link-line a:not(.disabled):hover { text-decoration: underline; }
+.link-line a.disabled { color: #a0aec0; text-decoration: line-through; pointer-events: none; cursor: default; }
+.link-line a.copied { color: #276749 !important; }
+.link-line a.copied::after {
+  content: 'Copied!';
+  position: absolute;
+  bottom: calc(100% + 5px);
+  left: 0;
+  background: #1a202c;
+  color: #fff;
+  font-size: .68rem;
+  padding: .15rem .45rem;
+  border-radius: 4px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+/* ✎ rename button — keep link-copy only for this usage */
 .link-copy {
   flex-shrink: 0;
   padding: .1rem .4rem; font-size: .7rem;

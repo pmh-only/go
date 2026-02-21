@@ -26,6 +26,12 @@ var indexTmpl = template.Must(
 			}
 			return s[:n] + "..."
 		},
+		"stripScheme": func(s string) string {
+			if i := strings.Index(s, "://"); i >= 0 {
+				return s[i+3:]
+			}
+			return s
+		},
 	}).Parse(indexTmplSrc),
 )
 

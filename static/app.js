@@ -32,6 +32,23 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 });
 
+/* ── helpers ── */
+function stripScheme(url) {
+  return url.replace(/^https?:\/\//, '');
+}
+
+/* ── click-to-copy link ── */
+function copyLink(e, el) {
+  e.preventDefault();
+  if (el.classList.contains('disabled')) return;
+  const url = el.dataset.url;
+  if (!url || !navigator.clipboard?.writeText) return;
+  navigator.clipboard.writeText(url).then(() => {
+    el.classList.add('copied');
+    setTimeout(() => el.classList.remove('copied'), 1500);
+  }).catch(() => {});
+}
+
 /* ── form toggles ── */
 function onToggle() {
   const pub  = document.getElementById('chkPublic');
@@ -65,8 +82,8 @@ async function shorten(e) {
       resultEl.innerHTML = '<div class="result error"><div class="rlabel">Error</div>' + (data.error || 'Something went wrong') + '</div>';
       return;
     }
-    let rows = '';
     const pubUrl = data.alias_url || data.short_url;
+    let rows = '';
     if (pubUrl)            rows += urlRow('pub-' + data.code, 'public',   pubUrl,            true);
     if (data.internal_url) rows += urlRow('int-' + data.code, 'internal', data.internal_url, false);
     resultEl.innerHTML = '<div class="result success"><div class="rlabel">Your links</div>' + rows + '</div>';
@@ -82,19 +99,12 @@ async function shorten(e) {
 }
 
 function urlRow(id, type, text, isHref) {
-  const tag = '<span class="url-tag tag-' + type + ' on">' + type + '</span>';
-  const a   = isHref
-    ? '<a id="' + id + '" href="' + text + '" target="_blank">' + text + '</a>'
-    : '<a id="' + id + '">' + text + '</a>';
-  const btn = '<button class="copy-btn" onclick="copyText(\'' + id + '\',this)">Copy</button>';
-  return '<div class="url-row">' + tag + a + btn + '</div>';
-}
-
-function copyText(id, btn) {
-  navigator.clipboard.writeText(document.getElementById(id).textContent).then(() => {
-    btn.textContent = 'Copied!';
-    setTimeout(() => btn.textContent = 'Copy', 2000);
-  });
+  const tag     = '<span class="url-tag tag-' + type + ' on">' + type + '</span>';
+  const display = stripScheme(text);
+  const a = isHref
+    ? '<a id="' + id + '" href="' + text + '" target="_blank" data-url="' + text + '" onclick="copyLink(event,this)">' + display + '</a>'
+    : '<a id="' + id + '" data-url="' + text + '" onclick="copyLink(event,this)">' + display + '</a>';
+  return '<div class="url-row">' + tag + a + '</div>';
 }
 
 /* ── edit code (ID) — inline ── */
@@ -140,8 +150,17 @@ async function saveEditCode(oldCode) {
   disp.style.display = '';
   const pb = document.getElementById('pub-link-' + oldCode);
   const ib = document.getElementById('int-link-' + oldCode);
-  if (pb) { pb.id = 'pub-link-' + newCode; pb.textContent = pb.textContent.replace(oldCode, newCode); if (pb.href) pb.href = '/' + newCode; }
-  if (ib) { ib.id = 'int-link-' + newCode; ib.textContent = ib.textContent.replace(oldCode, newCode); }
+  if (pb) {
+    pb.id = 'pub-link-' + newCode;
+    pb.textContent = pb.textContent.replace(oldCode, newCode);
+    pb.dataset.url  = pb.dataset.url.replace(oldCode, newCode);
+    if (pb.getAttribute('href')) pb.setAttribute('href', pb.dataset.url);
+  }
+  if (ib) {
+    ib.id = 'int-link-' + newCode;
+    ib.textContent  = ib.textContent.replace(oldCode, newCode);
+    ib.dataset.url  = ib.dataset.url.replace(oldCode, newCode);
+  }
   row.querySelectorAll('[onclick]').forEach(el => {
     el.setAttribute('onclick', el.getAttribute('onclick').replaceAll("'" + oldCode + "'", "'" + newCode + "'"));
   });
@@ -151,13 +170,6 @@ function cancelEditCode(code) {
   const editDiv = document.getElementById('code-edit-' + code);
   if (editDiv) editDiv.remove();
   document.getElementById('code-display-' + code).style.display = '';
-}
-
-function copyRaw(text, btn) {
-  navigator.clipboard.writeText(text).then(() => {
-    btn.textContent = 'Copied!';
-    setTimeout(() => btn.textContent = 'Copy', 2000);
-  });
 }
 
 /* ── search / filter ── */
@@ -216,7 +228,7 @@ async function rowToggle(code, type, btn) {
   const idx   = type === 'public' ? 0 : 1;
   links[idx].classList.toggle('disabled', !newVal);
   if (type === 'public') {
-    if (newVal) { links[idx].href = links[idx].textContent; links[idx].target = '_blank'; }
+    if (newVal) { links[idx].setAttribute('href', links[idx].dataset.url); links[idx].target = '_blank'; }
     else        { links[idx].removeAttribute('href'); links[idx].removeAttribute('target'); }
   }
 }
