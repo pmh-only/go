@@ -83,7 +83,7 @@
           <th>Actions</th>
         </tr>
       </thead>
-      <tbody>
+      <tbody id="linksBody">
         {{range .URLs}}
         <tr id="row-{{.Code}}">
           <td class="td-links">
@@ -130,7 +130,7 @@
       </tbody>
     </table>
     {{else}}
-    <div class="empty-state">
+    <div id="emptyState" class="empty-state">
       <svg width="40" height="40" fill="none" stroke="#cbd5e0" stroke-width="1.5" viewBox="0 0 24 24"><path d="M13.828 10.172a4 4 0 0 0-5.656 0l-4 4a4 4 0 1 0 5.656 5.656l1.102-1.101"/><path d="M10.172 13.828a4 4 0 0 0 5.656 0l4-4a4 4 0 0 0-5.656-5.656l-1.1 1.1"/></svg>
       <span>No URLs yet — shorten one on the left.</span>
     </div>
@@ -179,10 +179,14 @@
 <div id="modalEdit" class="modal-overlay">
   <div class="modal-box">
     <div class="modal-header">
-      <h3>Edit destination URL</h3>
+      <h3>Edit link</h3>
       <button class="modal-close" onclick="closeModal('modalEdit')">✕</button>
     </div>
     <div class="modal-body">
+      <div class="field">
+        <label class="field-label">Short code</label>
+        <input type="text" id="editCodeInput" placeholder="my-code">
+      </div>
       <div class="field" style="margin-bottom:0">
         <label class="field-label">Destination URL</label>
         <input type="text" id="editUrlInput" placeholder="https://…">

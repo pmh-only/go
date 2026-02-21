@@ -82,19 +82,90 @@ async function shorten(e) {
       resultEl.innerHTML = '<div class="result error"><div class="rlabel">Error</div>' + (data.error || 'Something went wrong') + '</div>';
       return;
     }
-    const pubUrl = data.alias_url || data.short_url;
-    let rows = '';
-    if (pubUrl)            rows += urlRow('pub-' + data.code, 'public',   pubUrl,            true);
-    if (data.internal_url) rows += urlRow('int-' + data.code, 'internal', data.internal_url, false);
-    resultEl.innerHTML = '<div class="result success"><div class="rlabel">Your links</div>' + rows + '</div>';
+    resultEl.innerHTML = '';
 
     // Copy the primary URL to clipboard automatically (prefer alias)
     const toCopy = data.alias_url || data.short_url || data.internal_url;
     if (toCopy && navigator.clipboard?.writeText) navigator.clipboard.writeText(toCopy).catch(() => {});
 
-    setTimeout(() => location.reload(), 2000);
+    // Reset form
+    document.getElementById('urlInput').value   = '';
+    document.getElementById('aliasInput').value = '';
+
+    // Insert new row at top of table
+    insertNewRow(data);
   } catch {
     resultEl.innerHTML = '<div class="result error"><div class="rlabel">Error</div>Network error.</div>';
+  }
+}
+
+function insertNewRow(data) {
+  const code    = data.code;
+  const longURL = data.long_url;
+  const pubUrl  = data.alias_url || data.short_url || '';
+  const intUrl  = data.internal_url || '';
+  const pubEnabled = !!pubUrl;
+  const intEnabled = !!intUrl;
+
+  const shortLong = longURL.length > 55 ? longURL.slice(0, 55) + '…' : longURL;
+  const pubDisplay = stripScheme(pubUrl);
+
+  const pubLink = pubEnabled
+    ? `<a href="${pubUrl}" target="_blank" data-url="${pubUrl}" onclick="copyLink(event,this)" id="pub-link-${code}">${pubDisplay}</a>`
+    : `<a class="disabled" data-url="${pubUrl}" onclick="copyLink(event,this)" id="pub-link-${code}">${pubDisplay}</a>`;
+  const intLink = intEnabled
+    ? `<a data-url="${intUrl}" onclick="copyLink(event,this)" id="int-link-${code}">${intUrl}</a>`
+    : `<a class="disabled" data-url="${intUrl}" onclick="copyLink(event,this)" id="int-link-${code}">${intUrl}</a>`;
+
+  const longURLEscaped = longURL.replace(/'/g, "\\'");
+  const tr = document.createElement('tr');
+  tr.id = 'row-' + code;
+  tr.className = 'row-new';
+  tr.innerHTML = `
+    <td class="td-links">
+      <div class="code-row" id="code-display-${code}">
+        <span class="code-label">${code}</span>
+        <button class="link-copy" style="opacity:0" onclick="startEditCode('${code}')">✎</button>
+      </div>
+      <div class="link-line">${pubLink}</div>
+      <div class="link-line">${intLink}</div>
+    </td>
+    <td class="td-original" id="orig-${code}">
+      <a href="${longURL}" target="_blank" style="color:#2b6cb0">${shortLong}</a>
+    </td>
+    <td class="td-date">just now</td>
+    <td class="td-actions">
+      <div class="actions-row">
+        <div class="vis-row">
+          <button class="row-toggle tag-public ${pubEnabled ? 'on' : 'off'}" onclick="rowToggle('${code}','public',this)" title="Toggle public link">Public</button>
+          <button class="row-toggle tag-internal ${intEnabled ? 'on' : 'off'}" onclick="rowToggle('${code}','internal',this)" title="Toggle internal link">Internal</button>
+        </div>
+        <div class="act-row">
+          <button class="action-btn btn-edit" onclick="startEdit('${code}','${longURLEscaped}')">Edit</button>
+          <button class="action-btn btn-delete" onclick="deleteRow('${code}')">Delete</button>
+        </div>
+      </div>
+    </td>`;
+
+  let tbody = document.getElementById('linksBody');
+  if (!tbody) {
+    // First ever link — replace empty-state with a full table
+    const emptyState = document.getElementById('emptyState');
+    const tableWrap  = emptyState.parentNode;
+    emptyState.remove();
+    tableWrap.innerHTML =
+      '<table><thead><tr><th>Links</th><th>Original</th><th>Created</th><th>Actions</th></tr></thead>' +
+      '<tbody id="linksBody"></tbody></table>';
+    tbody = document.getElementById('linksBody');
+  }
+
+  tbody.insertBefore(tr, tbody.firstChild);
+
+  // Update count label
+  const label = document.getElementById('countLabel');
+  if (label) {
+    const total = tbody.querySelectorAll('tr').length;
+    label.textContent = total + ' entries';
   }
 }
 
@@ -238,31 +309,73 @@ let currentEditCode = null;
 
 function startEdit(code, currentURL) {
   currentEditCode = code;
-  const inp = document.getElementById('editUrlInput');
-  inp.value = currentURL;
-  inp.style.borderColor = '';
+  const codeInp = document.getElementById('editCodeInput');
+  codeInp.value = code;
+  codeInp.style.borderColor = '';
+  const urlInp = document.getElementById('editUrlInput');
+  urlInp.value = currentURL;
+  urlInp.style.borderColor = '';
   document.getElementById('editFeedback').style.display = 'none';
   openModal('modalEdit');
-  setTimeout(() => inp.focus(), 50);
+  setTimeout(() => codeInp.focus(), 50);
 }
 
 async function confirmEdit() {
-  const newURL = document.getElementById('editUrlInput').value.trim();
+  const newCode = document.getElementById('editCodeInput').value.trim();
+  const newURL  = document.getElementById('editUrlInput').value.trim();
   if (!newURL) return;
+
+  const body = { long_url: newURL };
+  if (newCode && newCode !== currentEditCode) body.code = newCode;
+
   const res = await fetch('/urls/' + currentEditCode, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ long_url: newURL }),
+    body: JSON.stringify(body),
   });
   if (!res.ok) {
-    document.getElementById('editUrlInput').style.borderColor = '#fc8181';
+    const data = await res.json().catch(() => ({}));
     const fb = document.getElementById('editFeedback');
-    fb.textContent = 'Failed to save.'; fb.style.color = '#c53030'; fb.style.display = '';
+    fb.textContent = data.error || 'Failed to save.'; fb.style.color = '#c53030'; fb.style.display = '';
+    if (body.code) document.getElementById('editCodeInput').style.borderColor = '#fc8181';
+    else           document.getElementById('editUrlInput').style.borderColor  = '#fc8181';
     return;
   }
+
+  const effectiveCode = body.code || currentEditCode;
+
+  // Update destination URL cell
   const cell  = document.getElementById('orig-' + currentEditCode);
   const short = newURL.length > 55 ? newURL.slice(0, 55) + '…' : newURL;
   cell.innerHTML = '<a href="' + newURL + '" target="_blank" style="color:#2b6cb0">' + short + '</a>';
+
+  // If the code changed, rename all code-keyed DOM elements
+  if (body.code) {
+    const oldCode = currentEditCode;
+    const row = document.getElementById('row-' + oldCode);
+    row.id = 'row-' + effectiveCode;
+    cell.id = 'orig-' + effectiveCode;
+    const disp = document.getElementById('code-display-' + oldCode);
+    disp.id = 'code-display-' + effectiveCode;
+    disp.querySelector('.code-label').textContent = effectiveCode;
+    const pb = document.getElementById('pub-link-' + oldCode);
+    const ib = document.getElementById('int-link-' + oldCode);
+    if (pb) {
+      pb.id = 'pub-link-' + effectiveCode;
+      pb.textContent = pb.textContent.replace(oldCode, effectiveCode);
+      pb.dataset.url  = pb.dataset.url.replace(oldCode, effectiveCode);
+      if (pb.getAttribute('href')) pb.setAttribute('href', pb.dataset.url);
+    }
+    if (ib) {
+      ib.id = 'int-link-' + effectiveCode;
+      ib.textContent  = ib.textContent.replace(oldCode, effectiveCode);
+      ib.dataset.url  = ib.dataset.url.replace(oldCode, effectiveCode);
+    }
+    row.querySelectorAll('[onclick]').forEach(el => {
+      el.setAttribute('onclick', el.getAttribute('onclick').replaceAll("'" + oldCode + "'", "'" + effectiveCode + "'"));
+    });
+  }
+
   closeModal('modalEdit');
 }
 

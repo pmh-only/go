@@ -157,6 +157,8 @@ thead th {
 }
 tbody tr { border-bottom: 1px solid #f0f4f8; }
 tbody tr:hover { background: #f7fafc; }
+@keyframes row-highlight { 0%,60% { background: #c6f6d5; } 100% { background: transparent; } }
+tr.row-new { animation: row-highlight 2.5s ease forwards; }
 td { padding: .65rem 1rem; vertical-align: middle; }
 td.td-links { min-width: 220px; }
 td.td-original { max-width: 280px; word-break: break-all; }
