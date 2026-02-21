@@ -116,6 +116,8 @@ function insertNewRow(data) {
   const intLink = intEnabled
     ? `<a data-url="${intUrl}" onclick="copyLink(event,this)" id="int-link-${code}">${intUrl}</a>`
     : `<a class="disabled" data-url="${intUrl}" onclick="copyLink(event,this)" id="int-link-${code}">${intUrl}</a>`;
+  const pubToggle = `<button class="row-toggle tag-public ${pubEnabled ? 'on' : 'off'}" onclick="rowToggle('${code}','public',this)" title="Toggle public link">P</button>`;
+  const intToggle = `<button class="row-toggle tag-internal ${intEnabled ? 'on' : 'off'}" onclick="rowToggle('${code}','internal',this)" title="Toggle internal link">I</button>`;
 
   const longURLEscaped = longURL.replace(/'/g, "\\'");
   const tr = document.createElement('tr');
@@ -127,25 +129,25 @@ function insertNewRow(data) {
         <span class="code-label">${code}</span>
         <button class="link-copy" style="opacity:0" onclick="startEditCode('${code}')">✎</button>
       </div>
-      <div class="link-line">${pubLink}</div>
-      <div class="link-line">${intLink}</div>
+      <div class="link-line">${pubToggle}${pubLink}</div>
+      <div class="link-line">${intToggle}${intLink}</div>
     </td>
     <td class="td-original" id="orig-${code}">
       <a href="${longURL}" target="_blank" style="color:#2b6cb0">${shortLong}</a>
     </td>
     <td class="td-date">just now</td>
     <td class="td-actions">
-      <div class="actions-row">
-        <div class="vis-row">
-          <button class="row-toggle tag-public ${pubEnabled ? 'on' : 'off'}" onclick="rowToggle('${code}','public',this)" title="Toggle public link">Public</button>
-          <button class="row-toggle tag-internal ${intEnabled ? 'on' : 'off'}" onclick="rowToggle('${code}','internal',this)" title="Toggle internal link">Internal</button>
-        </div>
         <div class="act-row">
-          <button class="action-btn btn-qr" onclick="showQR('${code}')">QR</button>
-          <button class="action-btn btn-edit" onclick="startEdit('${code}','${longURLEscaped}')">Edit</button>
-          <button class="action-btn btn-delete" onclick="deleteRow('${code}')">Delete</button>
+          <button class="action-btn btn-qr"    onclick="showQR('${code}')"                    title="QR code">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="3" height="3"/><rect x="19" y="14" width="2" height="2"/><rect x="14" y="19" width="2" height="2"/><rect x="19" y="19" width="2" height="2"/></svg>
+          </button>
+          <button class="action-btn btn-edit"  onclick="startEdit('${code}','${longURLEscaped}')" title="Edit">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+          </button>
+          <button class="action-btn btn-delete" onclick="deleteRow('${code}')"                 title="Delete">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+          </button>
         </div>
-      </div>
     </td>`;
 
   let tbody = document.getElementById('linksBody');

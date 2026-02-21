@@ -233,9 +233,10 @@ tr:hover .link-copy { opacity: 1; }
 .copy-btn:hover { background: #e2e8f0; }
 
 .action-btn {
-  padding: .22rem .6rem; font-size: .75rem;
+  padding: .3rem; font-size: .75rem;
   border-radius: 5px; border: none; cursor: pointer; white-space: nowrap;
-  font-weight: 500;
+  font-weight: 500; display: inline-flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px;
 }
 .btn-qr     { background: #ebf8ff; color: #2b6cb0; }
 .btn-qr:hover { background: #bee3f8; }
@@ -247,9 +248,7 @@ tr:hover .link-copy { opacity: 1; }
 .btn-save:hover { background: #9ae6b4; }
 .btn-cancel { background: #edf2f7; color: #4a5568; }
 .btn-cancel:hover { background: #e2e8f0; }
-td.td-actions { white-space: nowrap; vertical-align: top; }
-.actions-row { display: flex; flex-direction: column; gap: .25rem; align-items: flex-start; }
-.vis-row { display: flex; gap: .25rem; flex-wrap: wrap; }
+td.td-actions { white-space: nowrap; vertical-align: middle; }
 .act-row { display: flex; gap: .25rem; }
 
 .empty-state {
@@ -316,7 +315,8 @@ td.td-actions { white-space: nowrap; vertical-align: top; }
   padding: 1rem 1.5rem;
   border-top: 1px solid #e2e8f0;
 }
-.modal-footer .action-btn { padding: .45rem .9rem; font-size: .82rem; }
+.modal-footer .action-btn,
+.qr-actions .action-btn { width: auto; height: auto; padding: .45rem .9rem; font-size: .82rem; }
 .modal-feedback {
   flex: 1;
   font-size: .8rem;
@@ -334,4 +334,44 @@ td.td-actions { white-space: nowrap; vertical-align: top; }
   position: fixed; bottom: .75rem; right: 1rem;
   font-size: .7rem; color: #a0aec0;
   pointer-events: none; user-select: none;
+}
+
+/* ── Mobile ── */
+@media (max-width: 700px) {
+  body {
+    flex-direction: column;
+    height: auto;
+    min-height: 100dvh;
+    overflow-y: auto;
+  }
+  .panel-left {
+    width: 100%;
+    flex-shrink: 0;
+    border-right: none;
+    border-bottom: 1px solid #e2e8f0;
+    padding: 1.25rem 1rem;
+  }
+  .panel-right {
+    overflow: visible;
+  }
+  .panel-right-header {
+    padding: .75rem 1rem;
+    flex-wrap: wrap;
+    gap: .5rem;
+  }
+  .search-wrap { width: 100%; }
+  #searchInput { width: 100%; }
+  .table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  /* hide the Created column — least useful on small screens */
+  thead th:nth-child(3),
+  td.td-date { display: none; }
+  td { padding: .5rem .65rem; }
+  /* always show the rename pencil — hover doesn't exist on touch */
+  .link-copy { opacity: 1; }
+  .build-badge { display: none; }
+  .modal-box,
+  .modal-box--sm { width: calc(100vw - 1.5rem); }
 }

@@ -1,11 +1,5 @@
-# binaries
-go
-go-amd64
-go-arm64
-url-shortener
-go-url-shortener
+gourl
 
-# database
 *.db
 *.db-shm
 *.db-wal
