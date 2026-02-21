@@ -25,10 +25,10 @@ type appConfig struct {
 	mu            sync.RWMutex
 	PublicBase    string // full URL prefix, e.g. https://pmh.codes
 	PublicHost    string // hostname only,  e.g. pmh.codes
-	UIHost        string // e.g. links.pmh.codes
-	InternalHost  string // e.g. go
-	AliasHost     string // e.g. pmh.so (alternate public redirect host)
-	PublicAPIHost string // e.g. api.pmh.codes (public API endpoint for /pass/, /qr/, etc.)
+	UIHost        string // full URL, e.g. https://links.pmh.codes
+	InternalHost  string // full URL, e.g. http://go
+	AliasHost     string // full URL, e.g. https://pmh.so (alternate public redirect host)
+	PublicAPIHost string // full URL, e.g. https://api.pmh.codes (public API endpoint)
 }
 
 var cfg = &appConfig{}
@@ -39,19 +39,24 @@ func (c *appConfig) snapshot() (publicBase, publicHost, uiHost, internalHost, al
 	return c.PublicBase, c.PublicHost, c.UIHost, c.InternalHost, c.AliasHost
 }
 
-// publicAPIBase returns the full URL prefix for the public API host (e.g. https://api.pmh.codes),
-// deriving the scheme from PublicBase. Returns "" when no public API host is set.
+// publicAPIBase returns the full URL prefix for the public API host (e.g. https://api.pmh.codes).
+// Returns "" when no public API host is set. Handles both full URLs and legacy bare hostnames.
 func (c *appConfig) publicAPIBase() string {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	if c.PublicAPIHost == "" {
 		return ""
 	}
+	v := strings.TrimRight(c.PublicAPIHost, "/")
+	if strings.HasPrefix(v, "http://") || strings.HasPrefix(v, "https://") {
+		return v
+	}
+	// Legacy bare hostname — derive scheme from PublicBase.
 	u, _ := url.Parse(c.PublicBase)
 	if u != nil && u.Scheme != "" {
-		return u.Scheme + "://" + c.PublicAPIHost
+		return u.Scheme + "://" + v
 	}
-	return "https://" + c.PublicAPIHost
+	return "https://" + v
 }
 
 func (c *appConfig) publicAPIHostVal() string {
@@ -60,19 +65,24 @@ func (c *appConfig) publicAPIHostVal() string {
 	return c.PublicAPIHost
 }
 
-// aliasBase returns the full URL prefix for the alias host (e.g. https://pmh.so),
-// deriving the scheme from PublicBase. Returns "" when no alias host is set.
+// aliasBase returns the full URL prefix for the alias host (e.g. https://pmh.so).
+// Returns "" when no alias host is set. Handles both full URLs and legacy bare hostnames.
 func (c *appConfig) aliasBase() string {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	if c.AliasHost == "" {
 		return ""
 	}
+	v := strings.TrimRight(c.AliasHost, "/")
+	if strings.HasPrefix(v, "http://") || strings.HasPrefix(v, "https://") {
+		return v
+	}
+	// Legacy bare hostname — derive scheme from PublicBase.
 	u, _ := url.Parse(c.PublicBase)
 	if u != nil && u.Scheme != "" {
-		return u.Scheme + "://" + c.AliasHost
+		return u.Scheme + "://" + v
 	}
-	return "https://" + c.AliasHost
+	return "https://" + v
 }
 
 func (c *appConfig) apply(publicBase, uiHost, internalHost, aliasHost, publicAPIHost string) {
@@ -90,8 +100,8 @@ func (c *appConfig) apply(publicBase, uiHost, internalHost, aliasHost, publicAPI
 
 func loadSettings() error {
 	publicBase := envOr("BASE_URL", "http://localhost")
-	uiHost := envOr("UI_HOST", "links.localhost")
-	internalHost := envOr("INTERNAL_HOST", "go")
+	uiHost := envOr("UI_HOST", "http://links.localhost")
+	internalHost := envOr("INTERNAL_HOST", "http://go")
 	aliasHost := envOr("ALIAS_HOST", "")
 	publicAPIHost := envOr("PUBLIC_API_HOST", "")
 

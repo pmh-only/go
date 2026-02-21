@@ -269,10 +269,10 @@
                     not
                     .InternalEnabled}}class="disabled"
                     {{end}}
-                    data-url="go/{{.Code}}"
+                    data-url="{{stripScheme $.InternalHost}}/{{.Code}}"
                     onclick="copyLink(event, this)"
                     id="int-link-{{.Code}}"
-                    >go/{{.Code}}</a
+                    >{{stripScheme $.InternalHost}}/{{.Code}}</a
                   >
                 </div>
               </td>
@@ -401,20 +401,20 @@
           <div class="field">
             <label class="field-label">UI host</label>
             <input
-              type="text"
+              type="url"
               id="cfgUIHost"
               value="{{.UIHost}}"
-              placeholder="links.pmh.codes"
+              placeholder="https://links.pmh.codes"
             />
             <small class="hint">Host that serves this web UI</small>
           </div>
           <div class="field">
             <label class="field-label">Internal host</label>
             <input
-              type="text"
+              type="url"
               id="cfgInternalHost"
               value="{{.InternalHost}}"
-              placeholder="go"
+              placeholder="http://go"
             />
             <small class="hint">Host for internal go-links</small>
           </div>
@@ -426,10 +426,10 @@
               ></label
             >
             <input
-              type="text"
+              type="url"
               id="cfgAliasHost"
               value="{{.AliasHost}}"
-              placeholder="pmh.so"
+              placeholder="https://pmh.so"
             />
             <small class="hint">Alternate public redirect host</small>
           </div>
@@ -441,10 +441,10 @@
               ></label
             >
             <input
-              type="text"
+              type="url"
               id="cfgPublicAPIHost"
               value="{{.PublicAPIHost}}"
-              placeholder="api.pmh.codes"
+              placeholder="https://api.pmh.codes"
             />
             <small class="hint">Dedicated host for /pass/ and /qr/ endpoints</small>
           </div>

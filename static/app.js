@@ -191,9 +191,10 @@ function insertNewRow(data) {
   const pubLink = pubEnabled
     ? `<a href="${pubUrl}" target="_blank" data-url="${pubUrl}" onclick="copyLink(event,this)" id="pub-link-${code}">${pubDisplay}</a>`
     : `<a class="disabled" data-url="${pubUrl}" onclick="copyLink(event,this)" id="pub-link-${code}">${pubDisplay}</a>`;
+  const intDisplay = stripScheme(intUrl);
   const intLink = intEnabled
-    ? `<a data-url="${intUrl}" onclick="copyLink(event,this)" id="int-link-${code}">${intUrl}</a>`
-    : `<a class="disabled" data-url="${intUrl}" onclick="copyLink(event,this)" id="int-link-${code}">${intUrl}</a>`;
+    ? `<a data-url="${intDisplay}" onclick="copyLink(event,this)" id="int-link-${code}">${intDisplay}</a>`
+    : `<a class="disabled" data-url="${intDisplay}" onclick="copyLink(event,this)" id="int-link-${code}">${intDisplay}</a>`;
   const pubToggle = `<button class="row-toggle tag-public ${pubEnabled ? "on" : "off"}" onclick="rowToggle('${code}','public',this)" title="Toggle public link">P</button>`;
   const intToggle = `<button class="row-toggle tag-internal ${intEnabled ? "on" : "off"}" onclick="rowToggle('${code}','internal',this)" title="Toggle internal link">I</button>`;
   const metaBadge =

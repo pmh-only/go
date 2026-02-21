@@ -287,7 +287,9 @@ func shortenHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if internalEnabled {
-		resp["internal_url"] = fmt.Sprintf("%s/%s", ih, code)
+		// ih is stored as a full URL (e.g. "http://go"); strip the scheme so
+		// the internal link reads as "go/code" for display and clipboard.
+		resp["internal_url"] = fmt.Sprintf("%s/%s", hostOf(ih), code)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -621,16 +623,16 @@ func doRedirect(w http.ResponseWriter, r *http.Request, code string, internal bo
 		}
 		// passURL: internal redirects share the same router so a relative path works;
 		// public/alias redirects use the dedicated public API host when configured,
-		// otherwise fall back to the UI host.
+		// otherwise fall back to the UI host (stored as a full URL).
 		passURL := "/pass/" + code
 		if !internal {
 			apiBase := cfg.publicAPIBase()
 			if apiBase == "" {
-				uiHost := uh
-				if uiHost == "" {
-					uiHost = effectiveHost(r)
+				if uh != "" {
+					apiBase = strings.TrimRight(uh, "/")
+				} else {
+					apiBase = requestScheme(r) + "://" + effectiveHost(r)
 				}
-				apiBase = requestScheme(r) + "://" + uiHost
 			}
 			passURL = apiBase + "/pass/" + code
 		}
@@ -735,18 +737,25 @@ func mainHandler(w http.ResponseWriter, r *http.Request) {
 	_, ph, uh, ih, ah := cfg.snapshot()
 	papiHost := cfg.publicAPIHostVal()
 
-	switch host {
-	case uh:
+	// UIHost, InternalHost, AliasHost, PublicAPIHost are stored as full URLs;
+	// use hostOf() to extract the bare hostname for comparison.
+	uhHost := hostOf(uh)
+	ihHost := hostOf(ih)
+	ahHost := hostOf(ah)
+	papiHostOnly := hostOf(papiHost)
+
+	switch {
+	case uhHost != "" && host == uhHost:
 		uiRouter(w, r)
-	case ph, ah:
+	case ph != "" && host == ph:
 		publicRouter(w, r)
-	case ih:
+	case ahHost != "" && host == ahHost:
+		publicRouter(w, r)
+	case ihHost != "" && host == ihHost:
 		internalRouter(w, r)
+	case papiHostOnly != "" && host == papiHostOnly:
+		publicAPIRouter(w, r)
 	default:
-		if papiHost != "" && host == papiHost {
-			publicAPIRouter(w, r)
-		} else {
-			http.NotFound(w, r)
-		}
+		http.NotFound(w, r)
 	}
 }
