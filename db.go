@@ -42,6 +42,8 @@ var migrations = [][]string{
 	},
 	// v4: optional password protection for JS redirects
 	{`ALTER TABLE urls ADD COLUMN password_hash TEXT NOT NULL DEFAULT ''`},
+	// v5: user-facing description
+	{`ALTER TABLE urls ADD COLUMN description TEXT NOT NULL DEFAULT ''`},
 }
 
 func initDB() error {
@@ -117,6 +119,7 @@ type urlRecord struct {
 	OGDescription   string
 	OGImage         string
 	PasswordHash    string
+	Description     string
 }
 
 // URLRow is used to render the URL list in the template.
@@ -130,15 +133,16 @@ type URLRow struct {
 	OGDescription   string
 	OGImage         string
 	HasPassword     bool
+	Description     string
 	CreatedAt       string
 }
 
-func saveURL(code, longURL string, publicEnabled, internalEnabled bool, redirectType, ogTitle, ogDescription, ogImage, passwordHash string) error {
+func saveURL(code, longURL string, publicEnabled, internalEnabled bool, redirectType, ogTitle, ogDescription, ogImage, passwordHash, description string) error {
 	_, err := db.Exec(
-		`INSERT INTO urls (code, long_url, public_enabled, internal_enabled, redirect_type, og_title, og_description, og_image, password_hash, created_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO urls (code, long_url, public_enabled, internal_enabled, redirect_type, og_title, og_description, og_image, password_hash, description, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		code, longURL, boolToInt(publicEnabled), boolToInt(internalEnabled),
-		redirectType, ogTitle, ogDescription, ogImage, passwordHash,
+		redirectType, ogTitle, ogDescription, ogImage, passwordHash, description,
 		time.Now().UTC().Format("2006-01-02 15:04:05"),
 	)
 	return err
@@ -148,9 +152,9 @@ func getRecord(code string) (urlRecord, error) {
 	var r urlRecord
 	var pub, int_ int
 	err := db.QueryRow(
-		`SELECT long_url, public_enabled, internal_enabled, redirect_type, og_title, og_description, og_image, password_hash
+		`SELECT long_url, public_enabled, internal_enabled, redirect_type, og_title, og_description, og_image, password_hash, description
 		 FROM urls WHERE code = ?`, code,
-	).Scan(&r.LongURL, &pub, &int_, &r.RedirectType, &r.OGTitle, &r.OGDescription, &r.OGImage, &r.PasswordHash)
+	).Scan(&r.LongURL, &pub, &int_, &r.RedirectType, &r.OGTitle, &r.OGDescription, &r.OGImage, &r.PasswordHash, &r.Description)
 	r.PublicEnabled = pub == 1
 	r.InternalEnabled = int_ == 1
 	return r, err
@@ -158,7 +162,7 @@ func getRecord(code string) (urlRecord, error) {
 
 func getAllURLs() ([]URLRow, error) {
 	rows, err := db.Query(
-		`SELECT code, long_url, public_enabled, internal_enabled, redirect_type, og_title, og_description, og_image, password_hash, created_at
+		`SELECT code, long_url, public_enabled, internal_enabled, redirect_type, og_title, og_description, og_image, password_hash, description, created_at
 		 FROM urls ORDER BY created_at DESC`,
 	)
 	if err != nil {
@@ -171,7 +175,7 @@ func getAllURLs() ([]URLRow, error) {
 		var r URLRow
 		var pub, int_ int
 		var passwordHash string
-		if err := rows.Scan(&r.Code, &r.LongURL, &pub, &int_, &r.RedirectType, &r.OGTitle, &r.OGDescription, &r.OGImage, &passwordHash, &r.CreatedAt); err != nil {
+		if err := rows.Scan(&r.Code, &r.LongURL, &pub, &int_, &r.RedirectType, &r.OGTitle, &r.OGDescription, &r.OGImage, &passwordHash, &r.Description, &r.CreatedAt); err != nil {
 			return nil, err
 		}
 		r.PublicEnabled = pub == 1
@@ -182,7 +186,7 @@ func getAllURLs() ([]URLRow, error) {
 	return urls, rows.Err()
 }
 
-func updateURL(code string, longURL *string, publicEnabled, internalEnabled *bool, redirectType, ogTitle, ogDescription, ogImage, passwordHash *string) error {
+func updateURL(code string, longURL *string, publicEnabled, internalEnabled *bool, redirectType, ogTitle, ogDescription, ogImage, passwordHash, description *string) error {
 	var sets []string
 	var args []any
 
@@ -217,6 +221,10 @@ func updateURL(code string, longURL *string, publicEnabled, internalEnabled *boo
 	if passwordHash != nil {
 		sets = append(sets, "password_hash = ?")
 		args = append(args, *passwordHash)
+	}
+	if description != nil {
+		sets = append(sets, "description = ?")
+		args = append(args, *description)
 	}
 	if len(sets) == 0 {
 		return nil

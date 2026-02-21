@@ -46,6 +46,17 @@
           </div>
         </div>
         <div class="field">
+          <label class="field-label" for="descInput"
+            >Description
+            <span style="color: #a0aec0; font-weight: 400">(optional)</span></label
+          >
+          <input
+            type="text"
+            id="descInput"
+            placeholder="Short note about this link"
+          />
+        </div>
+        <div class="field">
           <label class="field-label">Active link types</label>
           <div class="link-toggles">
             <label class="link-toggle public on" id="togglePublic">
@@ -220,6 +231,7 @@
               data-og-desc="{{.OGDescription}}"
               data-og-image="{{.OGImage}}"
               data-has-password="{{if .HasPassword}}true{{else}}false{{end}}"
+              data-desc="{{.Description}}"
             >
               <td class="td-links">
                 {{$pubBase := $.Base}}{{if $.AliasBase}}{{$pubBase =
@@ -268,6 +280,7 @@
                 <a href="{{.LongURL}}" target="_blank" style="color: #2b6cb0"
                   >{{truncate .LongURL 55}}</a
                 >
+                {{if .Description}}<div class="desc-text">{{.Description}}</div>{{end}}
               </td>
               <td class="td-date">{{.CreatedAt}}</td>
               <td class="td-actions">
@@ -452,6 +465,19 @@
           <div class="field">
             <label class="field-label">Destination URL</label>
             <input type="text" id="editUrlInput" placeholder="https://…" />
+          </div>
+          <div class="field">
+            <label class="field-label"
+              >Description
+              <span style="color: #a0aec0; font-weight: 400"
+                >(optional)</span
+              ></label
+            >
+            <input
+              type="text"
+              id="editDescInput"
+              placeholder="Short note about this link"
+            />
           </div>
           <div class="field">
             <label class="field-label">Redirect type</label>

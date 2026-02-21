@@ -130,6 +130,7 @@ async function shorten(e) {
     og_description: document.getElementById("ogDescription").value.trim(),
     og_image: document.getElementById("ogImage").value.trim(),
     password: document.getElementById("passwordInput").value,
+    description: document.getElementById("descInput").value.trim(),
   };
   if (alias) payload.custom_code = alias;
 
@@ -164,6 +165,7 @@ async function shorten(e) {
     document.getElementById("ogSection").style.display = "none";
     document.getElementById("passwordInput").value = "";
     document.getElementById("passwordSection").style.display = "none";
+    document.getElementById("descInput").value = "";
 
     // Insert new row at top of table
     insertNewRow(data);
@@ -181,6 +183,7 @@ function insertNewRow(data) {
   const pubEnabled = !!pubUrl;
   const intEnabled = !!intUrl;
   const redirectType = data.redirect_type || "redirect";
+  const desc = data.description || "";
 
   const shortLong = longURL.length > 55 ? longURL.slice(0, 55) + "…" : longURL;
   const pubDisplay = stripScheme(pubUrl);
@@ -209,6 +212,7 @@ function insertNewRow(data) {
   tr.dataset.ogDesc = data.og_description || "";
   tr.dataset.ogImage = data.og_image || "";
   tr.dataset.hasPassword = data.has_password ? "true" : "false";
+  tr.dataset.desc = desc;
   tr.innerHTML = `
     <td class="td-links">
       <div class="link-line">${pubToggle}${pubLink}${metaBadge}</div>
@@ -216,6 +220,7 @@ function insertNewRow(data) {
     </td>
     <td class="td-original" id="orig-${code}">
       <a href="${longURL}" target="_blank" style="color:#2b6cb0">${shortLong}</a>
+      ${desc ? `<div class="desc-text">${desc.replace(/&/g,"&amp;").replace(/</g,"&lt;")}</div>` : ""}
     </td>
     <td class="td-date">just now</td>
     <td class="td-actions">
@@ -389,6 +394,7 @@ function startEdit(code, currentURL) {
   document.getElementById("editRtypeJs").checked = rtype === "js";
   document.getElementById("editOgSection").style.display =
     rtype === "meta" || rtype === "js" ? "" : "none";
+  document.getElementById("editDescInput").value = row?.dataset.desc || "";
   document.getElementById("editOgTitle").value = row?.dataset.ogTitle || "";
   document.getElementById("editOgDescription").value =
     row?.dataset.ogDesc || "";
@@ -417,6 +423,7 @@ async function confirmEdit() {
     "redirect";
   const body = {
     long_url: newURL,
+    description: document.getElementById("editDescInput").value.trim(),
     redirect_type: rtype,
     og_title: document.getElementById("editOgTitle").value.trim(),
     og_description: document.getElementById("editOgDescription").value.trim(),
@@ -454,12 +461,16 @@ async function confirmEdit() {
   // Update destination URL cell
   const cell = document.getElementById("orig-" + currentEditCode);
   const short = newURL.length > 55 ? newURL.slice(0, 55) + "…" : newURL;
+  const descSafe = body.description
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;");
   cell.innerHTML =
     '<a href="' +
     newURL +
     '" target="_blank" style="color:#2b6cb0">' +
     short +
-    "</a>";
+    "</a>" +
+    (body.description ? `<div class="desc-text">${descSafe}</div>` : "");
 
   // If the code changed, rename all code-keyed DOM elements
   if (body.code) {
@@ -494,6 +505,7 @@ async function confirmEdit() {
   const rowEl = document.getElementById("row-" + effectiveCode);
   if (rowEl) {
     rowEl.dataset.rtype = rtype;
+    rowEl.dataset.desc = body.description;
     rowEl.dataset.ogTitle = body.og_title;
     rowEl.dataset.ogDesc = body.og_description;
     rowEl.dataset.ogImage = body.og_image;

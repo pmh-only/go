@@ -167,6 +167,7 @@ func shortenHandler(w http.ResponseWriter, r *http.Request) {
 		OGDescription   string `json:"og_description"`
 		OGImage         string `json:"og_image"`
 		Password        string `json:"password"`
+		Description     string `json:"description"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || strings.TrimSpace(body.URL) == "" {
 		jsonError(w, http.StatusBadRequest, "invalid JSON or missing url field")
@@ -188,6 +189,7 @@ func shortenHandler(w http.ResponseWriter, r *http.Request) {
 		redirectType = "redirect"
 	}
 	ogTitle, ogDescription, ogImage := body.OGTitle, body.OGDescription, body.OGImage
+	description := body.Description
 	passwordHash := ""
 	if body.Password != "" {
 		passwordHash = hashPassword(body.Password)
@@ -199,7 +201,7 @@ func shortenHandler(w http.ResponseWriter, r *http.Request) {
 			jsonError(w, http.StatusBadRequest, "custom alias must be 1–32 chars: letters, numbers, hyphens, underscores")
 			return
 		}
-		if err := saveURL(customCode, longURL, publicEnabled, internalEnabled, redirectType, ogTitle, ogDescription, ogImage, passwordHash); err != nil {
+		if err := saveURL(customCode, longURL, publicEnabled, internalEnabled, redirectType, ogTitle, ogDescription, ogImage, passwordHash, description); err != nil {
 			if strings.Contains(err.Error(), "UNIQUE constraint failed") {
 				jsonError(w, http.StatusConflict, fmt.Sprintf("alias '%s' is already taken", customCode))
 			} else {
@@ -216,7 +218,7 @@ func shortenHandler(w http.ResponseWriter, r *http.Request) {
 				jsonError(w, http.StatusInternalServerError, "internal error")
 				return
 			}
-			err = saveURL(code, longURL, publicEnabled, internalEnabled, redirectType, ogTitle, ogDescription, ogImage, passwordHash)
+			err = saveURL(code, longURL, publicEnabled, internalEnabled, redirectType, ogTitle, ogDescription, ogImage, passwordHash, description)
 			if err == nil {
 				break
 			}
@@ -239,6 +241,7 @@ func shortenHandler(w http.ResponseWriter, r *http.Request) {
 		"og_description":   ogDescription,
 		"og_image":         ogImage,
 		"has_password":     passwordHash != "",
+		"description":      description,
 	}
 	if publicEnabled {
 		resp["short_url"] = fmt.Sprintf("%s/%s", pb, code)
@@ -289,6 +292,7 @@ func urlsPatchHandler(w http.ResponseWriter, r *http.Request, code string) {
 		OGDescription   *string `json:"og_description"`
 		OGImage         *string `json:"og_image"`
 		Password        *string `json:"password"`
+		Description     *string `json:"description"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		jsonError(w, http.StatusBadRequest, "invalid JSON")
@@ -365,6 +369,10 @@ func urlsPatchHandler(w http.ResponseWriter, r *http.Request, code string) {
 		if passwordHash != nil {
 			opw = *passwordHash
 		}
+		odesc := rec.Description
+		if body.Description != nil {
+			odesc = *body.Description
+		}
 		tx, err := db.Begin()
 		if err != nil {
 			jsonError(w, http.StatusInternalServerError, "database error")
@@ -372,8 +380,8 @@ func urlsPatchHandler(w http.ResponseWriter, r *http.Request, code string) {
 		}
 		defer tx.Rollback()
 		if _, err := tx.Exec(
-			"INSERT INTO urls (code, long_url, public_enabled, internal_enabled, redirect_type, og_title, og_description, og_image, password_hash, created_at) SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, created_at FROM urls WHERE code = ?",
-			newCode, lu, boolToInt(nextPub), boolToInt(nextInt), rt, ogt, ogd, ogi, opw, code,
+			"INSERT INTO urls (code, long_url, public_enabled, internal_enabled, redirect_type, og_title, og_description, og_image, password_hash, description, created_at) SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, created_at FROM urls WHERE code = ?",
+			newCode, lu, boolToInt(nextPub), boolToInt(nextInt), rt, ogt, ogd, ogi, opw, odesc, code,
 		); err != nil {
 			if strings.Contains(err.Error(), "UNIQUE constraint failed") {
 				jsonError(w, http.StatusConflict, fmt.Sprintf("code '%s' is already taken", newCode))
@@ -394,7 +402,7 @@ func urlsPatchHandler(w http.ResponseWriter, r *http.Request, code string) {
 		return
 	}
 
-	if err := updateURL(code, body.LongURL, body.PublicEnabled, body.InternalEnabled, body.RedirectType, body.OGTitle, body.OGDescription, body.OGImage, passwordHash); err != nil {
+	if err := updateURL(code, body.LongURL, body.PublicEnabled, body.InternalEnabled, body.RedirectType, body.OGTitle, body.OGDescription, body.OGImage, passwordHash, body.Description); err != nil {
 		jsonError(w, http.StatusInternalServerError, "database error")
 		return
 	}
