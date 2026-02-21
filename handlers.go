@@ -215,10 +215,6 @@ func urlsPatchHandler(w http.ResponseWriter, r *http.Request, code string) {
 	if body.InternalEnabled != nil {
 		nextInt = *body.InternalEnabled
 	}
-	if !nextPub && !nextInt {
-		jsonError(w, http.StatusBadRequest, "at least one link type must remain active")
-		return
-	}
 
 	if body.LongURL != nil && strings.TrimSpace(*body.LongURL) == "" {
 		jsonError(w, http.StatusBadRequest, "long_url cannot be empty")

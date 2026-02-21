@@ -319,12 +319,6 @@ async function rowToggle(code, type, btn) {
   const newVal  = !isOn;
   const row     = document.getElementById('row-' + code);
   const btns    = row.querySelectorAll('.row-toggle');
-  const otherOn = [...btns].some(b => b !== btn && b.classList.contains('on'));
-  if (!newVal && !otherOn) {
-    btn.style.outline = '2px solid #fc8181';
-    setTimeout(() => btn.style.outline = '', 1200);
-    return;
-  }
   const payload = {};
   payload[type === 'public' ? 'public_enabled' : 'internal_enabled'] = newVal;
   const res = await fetch('/urls/' + code, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
