@@ -23,7 +23,8 @@ func main() {
 	}
 
 	pb, ph, uh, ih, ah := cfg.snapshot()
-	log.Printf("public: %s (%s)  ui: %s  internal: %s  alias: %s", pb, ph, uh, ih, ah)
+	papiHost := cfg.publicAPIHostVal()
+	log.Printf("public: %s (%s)  ui: %s  internal: %s  alias: %s  public-api: %s", pb, ph, uh, ih, ah, papiHost)
 
 	http.HandleFunc("/", mainHandler)
 	log.Fatal(http.ListenAndServe(port, nil))

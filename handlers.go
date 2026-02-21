@@ -163,16 +163,18 @@ else{document.getElementById('pw-err').style.display='';document.getElementById(
 func renderIndex(w http.ResponseWriter, r *http.Request) {
 	urls, _ := getAllURLs()
 	pb, _, uh, ih, ah := cfg.snapshot()
+	papiHost := cfg.publicAPIHostVal()
 
 	data := struct {
-		URLs         []URLRow
-		Base         string
-		AliasBase    string
-		UIHost       string
-		InternalHost string
-		AliasHost    string
-		BuildVersion string
-	}{URLs: urls, Base: pb, AliasBase: cfg.aliasBase(), UIHost: uh, InternalHost: ih, AliasHost: ah, BuildVersion: buildVersion}
+		URLs          []URLRow
+		Base          string
+		AliasBase     string
+		UIHost        string
+		InternalHost  string
+		AliasHost     string
+		PublicAPIHost string
+		BuildVersion  string
+	}{URLs: urls, Base: pb, AliasBase: cfg.aliasBase(), UIHost: uh, InternalHost: ih, AliasHost: ah, PublicAPIHost: papiHost, BuildVersion: buildVersion}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := indexTmpl.Execute(w, data); err != nil {
@@ -448,27 +450,31 @@ func settingsHandler(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
 		pb, ph, uh, ih, ah := cfg.snapshot()
+		papiHost := cfg.publicAPIHostVal()
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{
-			"public_base":   pb,
-			"public_host":   ph,
-			"ui_host":       uh,
-			"internal_host": ih,
-			"alias_host":    ah,
+			"public_base":     pb,
+			"public_host":     ph,
+			"ui_host":         uh,
+			"internal_host":   ih,
+			"alias_host":      ah,
+			"public_api_host": papiHost,
 		})
 
 	case http.MethodPatch:
 		var body struct {
-			PublicBase   *string `json:"public_base"`
-			UIHost       *string `json:"ui_host"`
-			InternalHost *string `json:"internal_host"`
-			AliasHost    *string `json:"alias_host"`
+			PublicBase    *string `json:"public_base"`
+			UIHost        *string `json:"ui_host"`
+			InternalHost  *string `json:"internal_host"`
+			AliasHost     *string `json:"alias_host"`
+			PublicAPIHost *string `json:"public_api_host"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			jsonError(w, http.StatusBadRequest, "invalid JSON")
 			return
 		}
 		pb, _, uh, ih, ah := cfg.snapshot()
+		papiHost := cfg.publicAPIHostVal()
 		if body.PublicBase != nil {
 			pb = *body.PublicBase
 		}
@@ -481,12 +487,16 @@ func settingsHandler(w http.ResponseWriter, r *http.Request) {
 		if body.AliasHost != nil {
 			ah = *body.AliasHost
 		}
-		cfg.apply(pb, uh, ih, ah)
+		if body.PublicAPIHost != nil {
+			papiHost = *body.PublicAPIHost
+		}
+		cfg.apply(pb, uh, ih, ah, papiHost)
 		for k, v := range map[string]string{
-			"public_base":   pb,
-			"ui_host":       uh,
-			"internal_host": ih,
-			"alias_host":    ah,
+			"public_base":     pb,
+			"ui_host":         uh,
+			"internal_host":   ih,
+			"alias_host":      ah,
+			"public_api_host": papiHost,
 		} {
 			if err := saveSetting(k, v); err != nil {
 				jsonError(w, http.StatusInternalServerError, "failed to save setting")
@@ -610,15 +620,19 @@ func doRedirect(w http.ResponseWriter, r *http.Request, code string, internal bo
 			shortURL = fmt.Sprintf("%s/%s", ab, code)
 		}
 		// passURL: internal redirects share the same router so a relative path works;
-		// public/alias redirects must use the absolute webui URL because /pass/ is
-		// only registered on the UI and internal routers.
+		// public/alias redirects use the dedicated public API host when configured,
+		// otherwise fall back to the UI host.
 		passURL := "/pass/" + code
 		if !internal {
-			uiHost := uh
-			if uiHost == "" {
-				uiHost = effectiveHost(r)
+			apiBase := cfg.publicAPIBase()
+			if apiBase == "" {
+				uiHost := uh
+				if uiHost == "" {
+					uiHost = effectiveHost(r)
+				}
+				apiBase = requestScheme(r) + "://" + uiHost
 			}
-			passURL = requestScheme(r) + "://" + uiHost + "/pass/" + code
+			passURL = apiBase + "/pass/" + code
 		}
 		tmpl := metaRedirectTmpl
 		if rec.RedirectType == "js" {
@@ -660,6 +674,18 @@ func apiRouter(w http.ResponseWriter, r *http.Request) bool {
 		return false
 	}
 	return true
+}
+
+// publicAPIRouter: public API host — serves /pass/ and /qr/ endpoints only.
+func publicAPIRouter(w http.ResponseWriter, r *http.Request) {
+	switch {
+	case strings.HasPrefix(r.URL.Path, "/pass/"):
+		passHandler(w, r)
+	case strings.HasPrefix(r.URL.Path, "/qr/"):
+		qrHandler(w, r)
+	default:
+		http.NotFound(w, r)
+	}
 }
 
 // uiRouter: web UI host — serves the UI and API, no redirects.
@@ -707,6 +733,7 @@ func internalRouter(w http.ResponseWriter, r *http.Request) {
 func mainHandler(w http.ResponseWriter, r *http.Request) {
 	host := effectiveHost(r)
 	_, ph, uh, ih, ah := cfg.snapshot()
+	papiHost := cfg.publicAPIHostVal()
 
 	switch host {
 	case uh:
@@ -716,7 +743,10 @@ func mainHandler(w http.ResponseWriter, r *http.Request) {
 	case ih:
 		internalRouter(w, r)
 	default:
-		// Fallback: serve UI (e.g. during local dev with no matching host)
-		uiRouter(w, r)
+		if papiHost != "" && host == papiHost {
+			publicAPIRouter(w, r)
+		} else {
+			http.NotFound(w, r)
+		}
 	}
 }

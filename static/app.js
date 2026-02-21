@@ -282,6 +282,7 @@ async function saveSettings() {
     ui_host: document.getElementById("cfgUIHost").value.trim(),
     internal_host: document.getElementById("cfgInternalHost").value.trim(),
     alias_host: document.getElementById("cfgAliasHost").value.trim(),
+    public_api_host: document.getElementById("cfgPublicAPIHost").value.trim(),
   };
   const res = await fetch("/settings", {
     method: "PATCH",

@@ -418,7 +418,7 @@
             />
             <small class="hint">Host for internal go-links</small>
           </div>
-          <div class="field" style="margin-bottom: 0">
+          <div class="field">
             <label class="field-label"
               >Alias host
               <span style="color: #a0aec0; font-weight: 400"
@@ -432,6 +432,21 @@
               placeholder="pmh.so"
             />
             <small class="hint">Alternate public redirect host</small>
+          </div>
+          <div class="field" style="margin-bottom: 0">
+            <label class="field-label"
+              >Public API host
+              <span style="color: #a0aec0; font-weight: 400"
+                >(optional)</span
+              ></label
+            >
+            <input
+              type="text"
+              id="cfgPublicAPIHost"
+              value="{{.PublicAPIHost}}"
+              placeholder="api.pmh.codes"
+            />
+            <small class="hint">Dedicated host for /pass/ and /qr/ endpoints</small>
           </div>
         </div>
         <div class="modal-footer">
