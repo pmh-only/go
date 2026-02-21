@@ -1,5 +1,7 @@
 # binaries
 go
+go-amd64
+go-arm64
 url-shortener
 go-url-shortener
 
