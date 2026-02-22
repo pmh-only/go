@@ -239,7 +239,7 @@ function insertNewRow(data) {
       <div class="link-line">${intToggle}${intLink}</div>
     </td>
     <td class="td-original" id="orig-${code}">
-      <a href="${longURL}" target="_blank" style="color:#2b6cb0">${shortLong}</a>
+      <a href="${longURL}" target="_blank" style="color:#58a6ff">${shortLong}</a>
       ${desc ? `<div class="desc-text">${desc.replace(/&/g,"&amp;").replace(/</g,"&lt;")}</div>` : ""}
     </td>
     <td class="td-date">just now${expiresAt ? `<div class="expires-text">${formatExpiryDisplay(expiresAt)}</div>` : ""}</td>
@@ -313,11 +313,11 @@ async function saveSettings() {
   fb.style.display = "";
   if (res.ok) {
     fb.textContent = "Saved!";
-    fb.style.color = "#276749";
+    fb.style.color = "#56d364";
     setTimeout(() => closeModal("modalSettings"), 800);
   } else {
     fb.textContent = "Error saving.";
-    fb.style.color = "#c53030";
+    fb.style.color = "#f85149";
   }
   setTimeout(() => {
     fb.style.display = "none";
@@ -343,7 +343,7 @@ async function copyQR() {
     await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
     const fb = document.getElementById("qrFeedback");
     fb.textContent = "Copied!";
-    fb.style.color = "#276749";
+    fb.style.color = "#56d364";
     fb.style.display = "";
     setTimeout(() => {
       fb.style.display = "none";
@@ -351,7 +351,7 @@ async function copyQR() {
   } catch {
     const fb = document.getElementById("qrFeedback");
     fb.textContent = "Copy failed — try Download instead.";
-    fb.style.color = "#c53030";
+    fb.style.color = "#f85149";
     fb.style.display = "";
   }
 }
@@ -486,7 +486,7 @@ async function confirmEdit() {
     const data = await res.json().catch(() => ({}));
     const fb = document.getElementById("editFeedback");
     fb.textContent = data.error || "Failed to save.";
-    fb.style.color = "#c53030";
+    fb.style.color = "#f85149";
     fb.style.display = "";
     if (body.code)
       document.getElementById("editCodeInput").style.borderColor = "#fc8181";
@@ -505,7 +505,7 @@ async function confirmEdit() {
   cell.innerHTML =
     '<a href="' +
     newURL +
-    '" target="_blank" style="color:#2b6cb0">' +
+    '" target="_blank" style="color:#58a6ff">' +
     short +
     "</a>" +
     (body.description ? `<div class="desc-text">${descSafe}</div>` : "");
