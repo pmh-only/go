@@ -44,6 +44,15 @@ function stripScheme(url) {
   return url.replace(/^https?:\/\//, "");
 }
 
+function formatExpiryDisplay(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  const now = new Date();
+  const expired = d <= now;
+  const label = expired ? "Expired" : "Expires";
+  return `<span class="${expired ? "expired" : ""}">${label}: ${d.toLocaleString()}</span>`;
+}
+
 /* ── click-to-copy link ── */
 function copyLink(e, el) {
   e.preventDefault();
@@ -87,6 +96,11 @@ function clearEditPassword() {
   document.getElementById("editClearPwBtn").style.display = "none";
 }
 
+function clearEditExpires() {
+  document.getElementById("editExpiresInput").value = "";
+  document.getElementById("editClearExpiresBtn").style.display = "none";
+}
+
 /* ── form toggles ── */
 function onToggle() {
   const pub = document.getElementById("chkPublic");
@@ -121,6 +135,7 @@ async function shorten(e) {
   const resultEl = document.getElementById("result");
   resultEl.innerHTML = "";
 
+  const expiresLocal = document.getElementById("expiresInput").value;
   const payload = {
     url,
     public_enabled: pub,
@@ -131,6 +146,7 @@ async function shorten(e) {
     og_image: document.getElementById("ogImage").value.trim(),
     password: document.getElementById("passwordInput").value,
     description: document.getElementById("descInput").value.trim(),
+    expires_at: expiresLocal ? new Date(expiresLocal).toISOString() : "",
   };
   if (alias) payload.custom_code = alias;
 
@@ -166,6 +182,7 @@ async function shorten(e) {
     document.getElementById("passwordInput").value = "";
     document.getElementById("passwordSection").style.display = "none";
     document.getElementById("descInput").value = "";
+    document.getElementById("expiresInput").value = "";
 
     // Insert new row at top of table
     insertNewRow(data);
@@ -184,6 +201,7 @@ function insertNewRow(data) {
   const intEnabled = !!intUrl;
   const redirectType = data.redirect_type || "redirect";
   const desc = data.description || "";
+  const expiresAt = data.expires_at || "";
 
   const shortLong = longURL.length > 55 ? longURL.slice(0, 55) + "…" : longURL;
   const pubDisplay = stripScheme(pubUrl);
@@ -214,6 +232,7 @@ function insertNewRow(data) {
   tr.dataset.ogImage = data.og_image || "";
   tr.dataset.hasPassword = data.has_password ? "true" : "false";
   tr.dataset.desc = desc;
+  tr.dataset.expiresAt = expiresAt;
   tr.innerHTML = `
     <td class="td-links">
       <div class="link-line">${pubToggle}${pubLink}${metaBadge}</div>
@@ -223,7 +242,7 @@ function insertNewRow(data) {
       <a href="${longURL}" target="_blank" style="color:#2b6cb0">${shortLong}</a>
       ${desc ? `<div class="desc-text">${desc.replace(/&/g,"&amp;").replace(/</g,"&lt;")}</div>` : ""}
     </td>
-    <td class="td-date">just now</td>
+    <td class="td-date">just now${expiresAt ? `<div class="expires-text">${formatExpiryDisplay(expiresAt)}</div>` : ""}</td>
     <td class="td-actions">
         <div class="act-row">
           <button class="action-btn btn-qr"    onclick="showQR('${code}')"                    title="QR code">
@@ -411,6 +430,21 @@ function startEdit(code, currentURL) {
     : "Set password (optional)";
   clearBtn.style.display = hasPassword ? "" : "none";
 
+  const expiresAt = row?.dataset.expiresAt || "";
+  const editExpires = document.getElementById("editExpiresInput");
+  const clearExpiresBtn = document.getElementById("editClearExpiresBtn");
+  if (expiresAt) {
+    // Convert UTC ISO to local datetime-local value
+    const d = new Date(expiresAt);
+    editExpires.value = new Date(d.getTime() - d.getTimezoneOffset() * 60000)
+      .toISOString()
+      .slice(0, 16);
+    clearExpiresBtn.style.display = "";
+  } else {
+    editExpires.value = "";
+    clearExpiresBtn.style.display = "none";
+  }
+
   openModal("modalEdit");
   setTimeout(() => codeInp.focus(), 50);
 }
@@ -423,6 +457,7 @@ async function confirmEdit() {
   const rtype =
     document.querySelector('input[name="editRedirectType"]:checked')?.value ||
     "redirect";
+  const expiresLocal = document.getElementById("editExpiresInput").value;
   const body = {
     long_url: newURL,
     description: document.getElementById("editDescInput").value.trim(),
@@ -430,6 +465,7 @@ async function confirmEdit() {
     og_title: document.getElementById("editOgTitle").value.trim(),
     og_description: document.getElementById("editOgDescription").value.trim(),
     og_image: document.getElementById("editOgImage").value.trim(),
+    expires_at: expiresLocal ? new Date(expiresLocal).toISOString() : "",
   };
   if (rtype === "js") {
     if (editPasswordCleared) {
@@ -511,8 +547,24 @@ async function confirmEdit() {
     rowEl.dataset.ogTitle = body.og_title;
     rowEl.dataset.ogDesc = body.og_description;
     rowEl.dataset.ogImage = body.og_image;
+    rowEl.dataset.expiresAt = body.expires_at;
     if (body.password !== undefined) {
       rowEl.dataset.hasPassword = body.password ? "true" : "false";
+    }
+    // Update expiry display in td-date
+    const dateCell = rowEl.querySelector(".td-date");
+    if (dateCell) {
+      let expiryDiv = dateCell.querySelector(".expires-text");
+      if (body.expires_at) {
+        if (!expiryDiv) {
+          expiryDiv = document.createElement("div");
+          expiryDiv.className = "expires-text";
+          dateCell.appendChild(expiryDiv);
+        }
+        expiryDiv.innerHTML = formatExpiryDisplay(body.expires_at);
+      } else if (expiryDiv) {
+        expiryDiv.remove();
+      }
     }
   }
   const pubLinkEl = document.getElementById("pub-link-" + effectiveCode);

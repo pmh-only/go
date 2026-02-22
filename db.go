@@ -44,6 +44,8 @@ var migrations = [][]string{
 	{`ALTER TABLE urls ADD COLUMN password_hash TEXT NOT NULL DEFAULT ''`},
 	// v5: user-facing description
 	{`ALTER TABLE urls ADD COLUMN description TEXT NOT NULL DEFAULT ''`},
+	// v6: optional expiry timestamp (RFC3339, empty = no expiry)
+	{`ALTER TABLE urls ADD COLUMN expires_at TEXT NOT NULL DEFAULT ''`},
 }
 
 func initDB() error {
@@ -120,6 +122,7 @@ type urlRecord struct {
 	OGImage         string
 	PasswordHash    string
 	Description     string
+	ExpiresAt       string
 }
 
 // URLRow is used to render the URL list in the template.
@@ -135,14 +138,16 @@ type URLRow struct {
 	HasPassword     bool
 	Description     string
 	CreatedAt       string
+	ExpiresAt       string
+	IsExpired       bool
 }
 
-func saveURL(code, longURL string, publicEnabled, internalEnabled bool, redirectType, ogTitle, ogDescription, ogImage, passwordHash, description string) error {
+func saveURL(code, longURL string, publicEnabled, internalEnabled bool, redirectType, ogTitle, ogDescription, ogImage, passwordHash, description, expiresAt string) error {
 	_, err := db.Exec(
-		`INSERT INTO urls (code, long_url, public_enabled, internal_enabled, redirect_type, og_title, og_description, og_image, password_hash, description, created_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO urls (code, long_url, public_enabled, internal_enabled, redirect_type, og_title, og_description, og_image, password_hash, description, expires_at, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		code, longURL, boolToInt(publicEnabled), boolToInt(internalEnabled),
-		redirectType, ogTitle, ogDescription, ogImage, passwordHash, description,
+		redirectType, ogTitle, ogDescription, ogImage, passwordHash, description, expiresAt,
 		time.Now().UTC().Format("2006-01-02 15:04:05"),
 	)
 	return err
@@ -152,9 +157,9 @@ func getRecord(code string) (urlRecord, error) {
 	var r urlRecord
 	var pub, int_ int
 	err := db.QueryRow(
-		`SELECT long_url, public_enabled, internal_enabled, redirect_type, og_title, og_description, og_image, password_hash, description
+		`SELECT long_url, public_enabled, internal_enabled, redirect_type, og_title, og_description, og_image, password_hash, description, expires_at
 		 FROM urls WHERE code = ?`, code,
-	).Scan(&r.LongURL, &pub, &int_, &r.RedirectType, &r.OGTitle, &r.OGDescription, &r.OGImage, &r.PasswordHash, &r.Description)
+	).Scan(&r.LongURL, &pub, &int_, &r.RedirectType, &r.OGTitle, &r.OGDescription, &r.OGImage, &r.PasswordHash, &r.Description, &r.ExpiresAt)
 	r.PublicEnabled = pub == 1
 	r.InternalEnabled = int_ == 1
 	return r, err
@@ -162,7 +167,7 @@ func getRecord(code string) (urlRecord, error) {
 
 func getAllURLs() ([]URLRow, error) {
 	rows, err := db.Query(
-		`SELECT code, long_url, public_enabled, internal_enabled, redirect_type, og_title, og_description, og_image, password_hash, description, created_at
+		`SELECT code, long_url, public_enabled, internal_enabled, redirect_type, og_title, og_description, og_image, password_hash, description, expires_at, created_at
 		 FROM urls ORDER BY created_at DESC`,
 	)
 	if err != nil {
@@ -175,18 +180,23 @@ func getAllURLs() ([]URLRow, error) {
 		var r URLRow
 		var pub, int_ int
 		var passwordHash string
-		if err := rows.Scan(&r.Code, &r.LongURL, &pub, &int_, &r.RedirectType, &r.OGTitle, &r.OGDescription, &r.OGImage, &passwordHash, &r.Description, &r.CreatedAt); err != nil {
+		if err := rows.Scan(&r.Code, &r.LongURL, &pub, &int_, &r.RedirectType, &r.OGTitle, &r.OGDescription, &r.OGImage, &passwordHash, &r.Description, &r.ExpiresAt, &r.CreatedAt); err != nil {
 			return nil, err
 		}
 		r.PublicEnabled = pub == 1
 		r.InternalEnabled = int_ == 1
 		r.HasPassword = passwordHash != ""
+		if r.ExpiresAt != "" {
+			if t, err := time.Parse(time.RFC3339, r.ExpiresAt); err == nil {
+				r.IsExpired = time.Now().UTC().After(t)
+			}
+		}
 		urls = append(urls, r)
 	}
 	return urls, rows.Err()
 }
 
-func updateURL(code string, longURL *string, publicEnabled, internalEnabled *bool, redirectType, ogTitle, ogDescription, ogImage, passwordHash, description *string) error {
+func updateURL(code string, longURL *string, publicEnabled, internalEnabled *bool, redirectType, ogTitle, ogDescription, ogImage, passwordHash, description, expiresAt *string) error {
 	var sets []string
 	var args []any
 
@@ -225,6 +235,10 @@ func updateURL(code string, longURL *string, publicEnabled, internalEnabled *boo
 	if description != nil {
 		sets = append(sets, "description = ?")
 		args = append(args, *description)
+	}
+	if expiresAt != nil {
+		sets = append(sets, "expires_at = ?")
+		args = append(args, *expiresAt)
 	}
 	if len(sets) == 0 {
 		return nil

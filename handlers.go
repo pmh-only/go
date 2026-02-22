@@ -12,6 +12,7 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"time"
 
 	qrcode "github.com/skip2/go-qrcode"
 )
@@ -40,6 +41,13 @@ var indexTmpl = template.Must(
 				return s[i+3:]
 			}
 			return s
+		},
+		"formatExpiry": func(s string) string {
+			t, err := time.Parse(time.RFC3339, s)
+			if err != nil {
+				return s
+			}
+			return t.UTC().Format("2006-01-02 15:04 UTC")
 		},
 	}).Parse(indexTmplSrc),
 )
@@ -205,6 +213,7 @@ func shortenHandler(w http.ResponseWriter, r *http.Request) {
 		OGImage         string `json:"og_image"`
 		Password        string `json:"password"`
 		Description     string `json:"description"`
+		ExpiresAt       string `json:"expires_at"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || strings.TrimSpace(body.URL) == "" {
 		jsonError(w, http.StatusBadRequest, "invalid JSON or missing url field")
@@ -231,6 +240,14 @@ func shortenHandler(w http.ResponseWriter, r *http.Request) {
 	if body.Password != "" {
 		passwordHash = hashPassword(body.Password)
 	}
+	expiresAt := ""
+	if body.ExpiresAt != "" {
+		if _, err := time.Parse(time.RFC3339, body.ExpiresAt); err != nil {
+			jsonError(w, http.StatusBadRequest, "expires_at must be RFC3339 (e.g. 2026-03-01T00:00:00Z)")
+			return
+		}
+		expiresAt = body.ExpiresAt
+	}
 
 	var code string
 	if customCode != "" {
@@ -238,7 +255,7 @@ func shortenHandler(w http.ResponseWriter, r *http.Request) {
 			jsonError(w, http.StatusBadRequest, "custom alias must be 1–32 chars: letters, numbers, hyphens, underscores")
 			return
 		}
-		if err := saveURL(customCode, longURL, publicEnabled, internalEnabled, redirectType, ogTitle, ogDescription, ogImage, passwordHash, description); err != nil {
+		if err := saveURL(customCode, longURL, publicEnabled, internalEnabled, redirectType, ogTitle, ogDescription, ogImage, passwordHash, description, expiresAt); err != nil {
 			if strings.Contains(err.Error(), "UNIQUE constraint failed") {
 				jsonError(w, http.StatusConflict, fmt.Sprintf("alias '%s' is already taken", customCode))
 			} else {
@@ -255,7 +272,7 @@ func shortenHandler(w http.ResponseWriter, r *http.Request) {
 				jsonError(w, http.StatusInternalServerError, "internal error")
 				return
 			}
-			err = saveURL(code, longURL, publicEnabled, internalEnabled, redirectType, ogTitle, ogDescription, ogImage, passwordHash, description)
+			err = saveURL(code, longURL, publicEnabled, internalEnabled, redirectType, ogTitle, ogDescription, ogImage, passwordHash, description, expiresAt)
 			if err == nil {
 				break
 			}
@@ -279,6 +296,7 @@ func shortenHandler(w http.ResponseWriter, r *http.Request) {
 		"og_image":         ogImage,
 		"has_password":     passwordHash != "",
 		"description":      description,
+		"expires_at":       expiresAt,
 	}
 	if publicEnabled {
 		resp["short_url"] = fmt.Sprintf("%s/%s", pb, code)
@@ -332,6 +350,7 @@ func urlsPatchHandler(w http.ResponseWriter, r *http.Request, code string) {
 		OGImage         *string `json:"og_image"`
 		Password        *string `json:"password"`
 		Description     *string `json:"description"`
+		ExpiresAt       *string `json:"expires_at"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		jsonError(w, http.StatusBadRequest, "invalid JSON")
@@ -365,6 +384,14 @@ func urlsPatchHandler(w http.ResponseWriter, r *http.Request, code string) {
 	if body.RedirectType != nil && *body.RedirectType != "meta" && *body.RedirectType != "js" {
 		rt := "redirect"
 		body.RedirectType = &rt
+	}
+
+	// Validate expires_at if provided
+	if body.ExpiresAt != nil && *body.ExpiresAt != "" {
+		if _, err := time.Parse(time.RFC3339, *body.ExpiresAt); err != nil {
+			jsonError(w, http.StatusBadRequest, "expires_at must be RFC3339 (e.g. 2026-03-01T00:00:00Z)")
+			return
+		}
 	}
 
 	// Compute password hash if provided
@@ -412,6 +439,10 @@ func urlsPatchHandler(w http.ResponseWriter, r *http.Request, code string) {
 		if body.Description != nil {
 			odesc = *body.Description
 		}
+		oexp := rec.ExpiresAt
+		if body.ExpiresAt != nil {
+			oexp = *body.ExpiresAt
+		}
 		tx, err := db.Begin()
 		if err != nil {
 			jsonError(w, http.StatusInternalServerError, "database error")
@@ -419,8 +450,8 @@ func urlsPatchHandler(w http.ResponseWriter, r *http.Request, code string) {
 		}
 		defer tx.Rollback()
 		if _, err := tx.Exec(
-			"INSERT INTO urls (code, long_url, public_enabled, internal_enabled, redirect_type, og_title, og_description, og_image, password_hash, description, created_at) SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, created_at FROM urls WHERE code = ?",
-			newCode, lu, boolToInt(nextPub), boolToInt(nextInt), rt, ogt, ogd, ogi, opw, odesc, code,
+			"INSERT INTO urls (code, long_url, public_enabled, internal_enabled, redirect_type, og_title, og_description, og_image, password_hash, description, expires_at, created_at) SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, created_at FROM urls WHERE code = ?",
+			newCode, lu, boolToInt(nextPub), boolToInt(nextInt), rt, ogt, ogd, ogi, opw, odesc, oexp, code,
 		); err != nil {
 			if strings.Contains(err.Error(), "UNIQUE constraint failed") {
 				jsonError(w, http.StatusConflict, fmt.Sprintf("code '%s' is already taken", newCode))
@@ -441,7 +472,7 @@ func urlsPatchHandler(w http.ResponseWriter, r *http.Request, code string) {
 		return
 	}
 
-	if err := updateURL(code, body.LongURL, body.PublicEnabled, body.InternalEnabled, body.RedirectType, body.OGTitle, body.OGDescription, body.OGImage, passwordHash, body.Description); err != nil {
+	if err := updateURL(code, body.LongURL, body.PublicEnabled, body.InternalEnabled, body.RedirectType, body.OGTitle, body.OGDescription, body.OGImage, passwordHash, body.Description, body.ExpiresAt); err != nil {
 		jsonError(w, http.StatusInternalServerError, "database error")
 		return
 	}
@@ -552,6 +583,12 @@ func passHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
+	if rec.ExpiresAt != "" {
+		if t, err := time.Parse(time.RFC3339, rec.ExpiresAt); err == nil && time.Now().UTC().After(t) {
+			jsonError(w, http.StatusGone, "this link has expired")
+			return
+		}
+	}
 	if rec.PasswordHash == "" {
 		jsonError(w, http.StatusBadRequest, "no password set")
 		return
@@ -613,6 +650,12 @@ func doRedirect(w http.ResponseWriter, r *http.Request, code string, internal bo
 	if !internal && !rec.PublicEnabled {
 		http.Error(w, "public link disabled", http.StatusNotFound)
 		return
+	}
+	if rec.ExpiresAt != "" {
+		if t, err := time.Parse(time.RFC3339, rec.ExpiresAt); err == nil && time.Now().UTC().After(t) {
+			http.Error(w, "this link has expired", http.StatusGone)
+			return
+		}
 	}
 	if rec.RedirectType == "meta" || rec.RedirectType == "js" {
 		pb, _, uh, _, _ := cfg.snapshot()

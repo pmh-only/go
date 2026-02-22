@@ -57,6 +57,13 @@
           />
         </div>
         <div class="field">
+          <label class="field-label" for="expiresInput"
+            >Expires
+            <span style="color: #a0aec0; font-weight: 400">(optional)</span></label
+          >
+          <input type="datetime-local" id="expiresInput" />
+        </div>
+        <div class="field">
           <label class="field-label">Active link types</label>
           <div class="link-toggles">
             <label class="link-toggle public on" id="togglePublic">
@@ -232,6 +239,8 @@
               data-og-image="{{.OGImage}}"
               data-has-password="{{if .HasPassword}}true{{else}}false{{end}}"
               data-desc="{{.Description}}"
+              data-expires-at="{{.ExpiresAt}}"
+              {{if .IsExpired}}class="row-expired"{{end}}
             >
               <td class="td-links">
                 {{$pubBase := $.Base}}{{if $.AliasBase}}{{$pubBase =
@@ -282,7 +291,10 @@
                 >
                 {{if .Description}}<div class="desc-text">{{.Description}}</div>{{end}}
               </td>
-              <td class="td-date">{{.CreatedAt}}</td>
+              <td class="td-date">
+                {{.CreatedAt}}
+                {{if .ExpiresAt}}<div class="expires-text{{if .IsExpired}} expired{{end}}">{{if .IsExpired}}Expired{{else}}Expires{{end}}: {{formatExpiry .ExpiresAt}}</div>{{end}}
+              </td>
               <td class="td-actions">
                 <div class="act-row">
                   <button
@@ -493,6 +505,24 @@
               id="editDescInput"
               placeholder="Short note about this link"
             />
+          </div>
+          <div class="field">
+            <label class="field-label"
+              >Expires
+              <span style="color: #a0aec0; font-weight: 400"
+                >(optional)</span
+              ></label
+            >
+            <input type="datetime-local" id="editExpiresInput" />
+            <button
+              type="button"
+              id="editClearExpiresBtn"
+              class="clear-pw-btn"
+              onclick="clearEditExpires()"
+              style="display: none"
+            >
+              Remove expiry
+            </button>
           </div>
           <div class="field">
             <label class="field-label">Redirect type</label>
