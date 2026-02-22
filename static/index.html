@@ -64,6 +64,18 @@
           <input type="datetime-local" id="expiresInput" />
         </div>
         <div class="field">
+          <label class="field-label" for="maxUsesInput"
+            >Max uses
+            <span style="color: #6e7681; font-weight: 400">(optional)</span></label
+          >
+          <input
+            type="number"
+            id="maxUsesInput"
+            min="1"
+            placeholder="Unlimited"
+          />
+        </div>
+        <div class="field">
           <label class="field-label">Active link types</label>
           <div class="link-toggles">
             <label class="link-toggle public on" id="togglePublic">
@@ -240,7 +252,9 @@
               data-has-password="{{if .HasPassword}}true{{else}}false{{end}}"
               data-desc="{{.Description}}"
               data-expires-at="{{.ExpiresAt}}"
-              {{if .IsExpired}}class="row-expired"{{end}}
+              data-max-uses="{{.MaxUses}}"
+              data-use-count="{{.UseCount}}"
+              {{if or .IsExpired .UsesExhausted}}class="row-expired"{{end}}
             >
               <td class="td-links">
                 {{$pubBase := $.Base}}{{if $.AliasBase}}{{$pubBase =
@@ -294,6 +308,7 @@
               <td class="td-date">
                 {{.CreatedAt}}
                 {{if .ExpiresAt}}<div class="expires-text{{if .IsExpired}} expired{{end}}">{{if .IsExpired}}Expired{{else}}Expires{{end}}: {{formatExpiry .ExpiresAt}}</div>{{end}}
+                {{if .MaxUses}}<div class="uses-text{{if .UsesExhausted}} exhausted{{end}}">{{.UseCount}} / {{.MaxUses}} uses</div>{{end}}
               </td>
               <td class="td-actions">
                 <div class="act-row">
@@ -523,6 +538,21 @@
             >
               Remove expiry
             </button>
+          </div>
+          <div class="field">
+            <label class="field-label"
+              >Max uses
+              <span style="color: #6e7681; font-weight: 400"
+                >(optional)</span
+              ></label
+            >
+            <input
+              type="number"
+              id="editMaxUsesInput"
+              min="0"
+              placeholder="Unlimited"
+            />
+            <small class="hint" id="editUseCountHint"></small>
           </div>
           <div class="field">
             <label class="field-label">Redirect type</label>

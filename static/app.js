@@ -147,6 +147,7 @@ async function shorten(e) {
     password: document.getElementById("passwordInput").value,
     description: document.getElementById("descInput").value.trim(),
     expires_at: expiresLocal ? new Date(expiresLocal).toISOString() : "",
+    max_uses: parseInt(document.getElementById("maxUsesInput").value, 10) || 0,
   };
   if (alias) payload.custom_code = alias;
 
@@ -183,6 +184,7 @@ async function shorten(e) {
     document.getElementById("passwordSection").style.display = "none";
     document.getElementById("descInput").value = "";
     document.getElementById("expiresInput").value = "";
+    document.getElementById("maxUsesInput").value = "";
 
     // Insert new row at top of table
     insertNewRow(data);
@@ -202,6 +204,8 @@ function insertNewRow(data) {
   const redirectType = data.redirect_type || "redirect";
   const desc = data.description || "";
   const expiresAt = data.expires_at || "";
+  const maxUses = data.max_uses || 0;
+  const useCount = data.use_count || 0;
 
   const shortLong = longURL.length > 55 ? longURL.slice(0, 55) + "…" : longURL;
   const pubDisplay = stripScheme(pubUrl);
@@ -233,6 +237,8 @@ function insertNewRow(data) {
   tr.dataset.hasPassword = data.has_password ? "true" : "false";
   tr.dataset.desc = desc;
   tr.dataset.expiresAt = expiresAt;
+  tr.dataset.maxUses = maxUses;
+  tr.dataset.useCount = useCount;
   tr.innerHTML = `
     <td class="td-links">
       <div class="link-line">${pubToggle}${pubLink}${metaBadge}</div>
@@ -242,7 +248,7 @@ function insertNewRow(data) {
       <a href="${longURL}" target="_blank" style="color:#58a6ff">${shortLong}</a>
       ${desc ? `<div class="desc-text">${desc.replace(/&/g,"&amp;").replace(/</g,"&lt;")}</div>` : ""}
     </td>
-    <td class="td-date">just now${expiresAt ? `<div class="expires-text">${formatExpiryDisplay(expiresAt)}</div>` : ""}</td>
+    <td class="td-date">just now${expiresAt ? `<div class="expires-text">${formatExpiryDisplay(expiresAt)}</div>` : ""}${maxUses ? `<div class="uses-text">${useCount} / ${maxUses} uses</div>` : ""}</td>
     <td class="td-actions">
         <div class="act-row">
           <button class="action-btn btn-qr"    onclick="showQR('${code}')"                    title="QR code">
@@ -445,6 +451,12 @@ function startEdit(code, currentURL) {
     clearExpiresBtn.style.display = "none";
   }
 
+  const maxUses = parseInt(row?.dataset.maxUses || "0", 10);
+  const useCount = parseInt(row?.dataset.useCount || "0", 10);
+  document.getElementById("editMaxUsesInput").value = maxUses || "";
+  const hint = document.getElementById("editUseCountHint");
+  hint.textContent = maxUses ? `Current uses: ${useCount} of ${maxUses}` : useCount ? `Current uses: ${useCount}` : "";
+
   openModal("modalEdit");
   setTimeout(() => codeInp.focus(), 50);
 }
@@ -466,6 +478,7 @@ async function confirmEdit() {
     og_description: document.getElementById("editOgDescription").value.trim(),
     og_image: document.getElementById("editOgImage").value.trim(),
     expires_at: expiresLocal ? new Date(expiresLocal).toISOString() : "",
+    max_uses: parseInt(document.getElementById("editMaxUsesInput").value, 10) || 0,
   };
   if (rtype === "js") {
     if (editPasswordCleared) {
@@ -548,6 +561,7 @@ async function confirmEdit() {
     rowEl.dataset.ogDesc = body.og_description;
     rowEl.dataset.ogImage = body.og_image;
     rowEl.dataset.expiresAt = body.expires_at;
+    rowEl.dataset.maxUses = body.max_uses;
     if (body.password !== undefined) {
       rowEl.dataset.hasPassword = body.password ? "true" : "false";
     }
@@ -564,6 +578,20 @@ async function confirmEdit() {
         expiryDiv.innerHTML = formatExpiryDisplay(body.expires_at);
       } else if (expiryDiv) {
         expiryDiv.remove();
+      }
+      // Update uses display
+      let usesDiv = dateCell.querySelector(".uses-text");
+      if (body.max_uses) {
+        const uc = parseInt(rowEl.dataset.useCount || "0", 10);
+        if (!usesDiv) {
+          usesDiv = document.createElement("div");
+          usesDiv.className = "uses-text";
+          dateCell.appendChild(usesDiv);
+        }
+        usesDiv.textContent = `${uc} / ${body.max_uses} uses`;
+        usesDiv.classList.toggle("exhausted", uc >= body.max_uses);
+      } else if (usesDiv) {
+        usesDiv.remove();
       }
     }
   }

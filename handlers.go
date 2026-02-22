@@ -214,6 +214,7 @@ func shortenHandler(w http.ResponseWriter, r *http.Request) {
 		Password        string `json:"password"`
 		Description     string `json:"description"`
 		ExpiresAt       string `json:"expires_at"`
+		MaxUses         int    `json:"max_uses"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || strings.TrimSpace(body.URL) == "" {
 		jsonError(w, http.StatusBadRequest, "invalid JSON or missing url field")
@@ -248,6 +249,10 @@ func shortenHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		expiresAt = body.ExpiresAt
 	}
+	maxUses := body.MaxUses
+	if maxUses < 0 {
+		maxUses = 0
+	}
 
 	var code string
 	if customCode != "" {
@@ -255,7 +260,7 @@ func shortenHandler(w http.ResponseWriter, r *http.Request) {
 			jsonError(w, http.StatusBadRequest, "custom alias must be 1–32 chars: letters, numbers, hyphens, underscores")
 			return
 		}
-		if err := saveURL(customCode, longURL, publicEnabled, internalEnabled, redirectType, ogTitle, ogDescription, ogImage, passwordHash, description, expiresAt); err != nil {
+		if err := saveURL(customCode, longURL, publicEnabled, internalEnabled, redirectType, ogTitle, ogDescription, ogImage, passwordHash, description, expiresAt, maxUses); err != nil {
 			if strings.Contains(err.Error(), "UNIQUE constraint failed") {
 				jsonError(w, http.StatusConflict, fmt.Sprintf("alias '%s' is already taken", customCode))
 			} else {
@@ -272,7 +277,7 @@ func shortenHandler(w http.ResponseWriter, r *http.Request) {
 				jsonError(w, http.StatusInternalServerError, "internal error")
 				return
 			}
-			err = saveURL(code, longURL, publicEnabled, internalEnabled, redirectType, ogTitle, ogDescription, ogImage, passwordHash, description, expiresAt)
+			err = saveURL(code, longURL, publicEnabled, internalEnabled, redirectType, ogTitle, ogDescription, ogImage, passwordHash, description, expiresAt, maxUses)
 			if err == nil {
 				break
 			}
@@ -297,6 +302,8 @@ func shortenHandler(w http.ResponseWriter, r *http.Request) {
 		"has_password":     passwordHash != "",
 		"description":      description,
 		"expires_at":       expiresAt,
+		"max_uses":         maxUses,
+		"use_count":        0,
 	}
 	if publicEnabled {
 		resp["short_url"] = fmt.Sprintf("%s/%s", pb, code)
@@ -351,6 +358,7 @@ func urlsPatchHandler(w http.ResponseWriter, r *http.Request, code string) {
 		Password        *string `json:"password"`
 		Description     *string `json:"description"`
 		ExpiresAt       *string `json:"expires_at"`
+		MaxUses         *int    `json:"max_uses"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		jsonError(w, http.StatusBadRequest, "invalid JSON")
@@ -443,6 +451,13 @@ func urlsPatchHandler(w http.ResponseWriter, r *http.Request, code string) {
 		if body.ExpiresAt != nil {
 			oexp = *body.ExpiresAt
 		}
+		omaxu := rec.MaxUses
+		if body.MaxUses != nil {
+			omaxu = *body.MaxUses
+			if omaxu < 0 {
+				omaxu = 0
+			}
+		}
 		tx, err := db.Begin()
 		if err != nil {
 			jsonError(w, http.StatusInternalServerError, "database error")
@@ -450,8 +465,8 @@ func urlsPatchHandler(w http.ResponseWriter, r *http.Request, code string) {
 		}
 		defer tx.Rollback()
 		if _, err := tx.Exec(
-			"INSERT INTO urls (code, long_url, public_enabled, internal_enabled, redirect_type, og_title, og_description, og_image, password_hash, description, expires_at, created_at) SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, created_at FROM urls WHERE code = ?",
-			newCode, lu, boolToInt(nextPub), boolToInt(nextInt), rt, ogt, ogd, ogi, opw, odesc, oexp, code,
+			"INSERT INTO urls (code, long_url, public_enabled, internal_enabled, redirect_type, og_title, og_description, og_image, password_hash, description, expires_at, max_uses, use_count, created_at) SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, created_at FROM urls WHERE code = ?",
+			newCode, lu, boolToInt(nextPub), boolToInt(nextInt), rt, ogt, ogd, ogi, opw, odesc, oexp, omaxu, code,
 		); err != nil {
 			if strings.Contains(err.Error(), "UNIQUE constraint failed") {
 				jsonError(w, http.StatusConflict, fmt.Sprintf("code '%s' is already taken", newCode))
@@ -472,7 +487,7 @@ func urlsPatchHandler(w http.ResponseWriter, r *http.Request, code string) {
 		return
 	}
 
-	if err := updateURL(code, body.LongURL, body.PublicEnabled, body.InternalEnabled, body.RedirectType, body.OGTitle, body.OGDescription, body.OGImage, passwordHash, body.Description, body.ExpiresAt); err != nil {
+	if err := updateURL(code, body.LongURL, body.PublicEnabled, body.InternalEnabled, body.RedirectType, body.OGTitle, body.OGDescription, body.OGImage, passwordHash, body.Description, body.ExpiresAt, body.MaxUses); err != nil {
 		jsonError(w, http.StatusInternalServerError, "database error")
 		return
 	}
@@ -656,6 +671,13 @@ func doRedirect(w http.ResponseWriter, r *http.Request, code string, internal bo
 			http.Error(w, "this link has expired", http.StatusGone)
 			return
 		}
+	}
+	if ok, err := incrementUseCount(code, rec.MaxUses); err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	} else if !ok {
+		http.Error(w, "this link has reached its use limit", http.StatusGone)
+		return
 	}
 	if rec.RedirectType == "meta" || rec.RedirectType == "js" {
 		pb, _, uh, _, _ := cfg.snapshot()

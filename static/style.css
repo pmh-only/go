@@ -81,7 +81,8 @@ label.field-label {
 input[type="url"],
 input[type="text"],
 input[type="password"],
-input[type="datetime-local"] {
+input[type="datetime-local"],
+input[type="number"] {
   width: 100%;
   padding: 0.65rem 0.85rem;
   border: 1.5px solid #30363d;
@@ -380,6 +381,14 @@ td.td-date {
 .expires-text.expired {
   color: #f85149;
 }
+.uses-text {
+  font-size: 0.75rem;
+  margin-top: 0.2rem;
+  color: #8b949e;
+}
+.uses-text.exhausted {
+  color: #f85149;
+}
 tr.row-expired td {
   opacity: 0.55;
 }
@@ -611,10 +620,15 @@ td.td-actions {
 .modal-body input[type="url"],
 .modal-body input[type="text"],
 .modal-body input[type="password"],
-.modal-body input[type="datetime-local"] {
+.modal-body input[type="datetime-local"],
+.modal-body input[type="number"] {
   font-size: 0.88rem;
   padding: 0.55rem 0.75rem;
   color-scheme: dark;
+}
+.panel-left input[type="number"] {
+  font-size: 0.88rem;
+  padding: 0.55rem 0.75rem;
 }
 .modal-body p {
   color: #8b949e;
