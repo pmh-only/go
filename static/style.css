@@ -91,6 +91,7 @@ input[type="datetime-local"] {
   transition: border-color 0.15s;
   background: #0d1117;
   color: #e6edf3;
+  color-scheme: dark;
 }
 input[type="text"].alias {
   border-radius: 0 7px 7px 0;
@@ -101,6 +102,47 @@ input:focus {
 }
 input::placeholder {
   color: #484f58;
+}
+
+/* ── datetime-local picker chrome ── */
+input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+  filter: invert(0.6) sepia(1) saturate(3) hue-rotate(200deg);
+  cursor: pointer;
+  border-radius: 3px;
+  padding: 2px;
+  opacity: 0.7;
+  transition: opacity 0.15s;
+}
+input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
+  opacity: 1;
+}
+input[type="datetime-local"]::-webkit-datetime-edit-fields-wrapper {
+  color: #e6edf3;
+}
+input[type="datetime-local"]::-webkit-datetime-edit-text {
+  color: #484f58;
+  padding: 0 1px;
+}
+input[type="datetime-local"]::-webkit-datetime-edit-year-field,
+input[type="datetime-local"]::-webkit-datetime-edit-month-field,
+input[type="datetime-local"]::-webkit-datetime-edit-day-field,
+input[type="datetime-local"]::-webkit-datetime-edit-hour-field,
+input[type="datetime-local"]::-webkit-datetime-edit-minute-field,
+input[type="datetime-local"]::-webkit-datetime-edit-ampm-field {
+  color: #e6edf3;
+  background: transparent;
+  border-radius: 3px;
+  padding: 0 1px;
+}
+input[type="datetime-local"]::-webkit-datetime-edit-year-field:focus,
+input[type="datetime-local"]::-webkit-datetime-edit-month-field:focus,
+input[type="datetime-local"]::-webkit-datetime-edit-day-field:focus,
+input[type="datetime-local"]::-webkit-datetime-edit-hour-field:focus,
+input[type="datetime-local"]::-webkit-datetime-edit-minute-field:focus,
+input[type="datetime-local"]::-webkit-datetime-edit-ampm-field:focus {
+  background: #7c89f0;
+  color: #fff;
+  outline: none;
 }
 
 .link-toggles {
@@ -341,10 +383,6 @@ td.td-date {
 tr.row-expired td {
   opacity: 0.55;
 }
-.panel-left input[type="datetime-local"] {
-  font-size: 0.88rem;
-  padding: 0.55rem 0.75rem;
-}
 
 .link-line {
   display: flex;
@@ -576,6 +614,7 @@ td.td-actions {
 .modal-body input[type="datetime-local"] {
   font-size: 0.88rem;
   padding: 0.55rem 0.75rem;
+  color-scheme: dark;
 }
 .modal-body p {
   color: #8b949e;
