@@ -6,6 +6,7 @@ import (
 	"embed"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html/template"
 	"io/fs"
@@ -196,125 +197,66 @@ func jsonError(w http.ResponseWriter, status int, msg string) {
 	json.NewEncoder(w).Encode(map[string]string{"error": msg})
 }
 
+func managementErrorResponse(w http.ResponseWriter, err error) {
+	var invalid *requestError
+	var conflict *conflictError
+	switch {
+	case errors.As(err, &invalid):
+		jsonError(w, http.StatusBadRequest, invalid.Error())
+	case errors.As(err, &conflict):
+		jsonError(w, http.StatusConflict, conflict.Error())
+	case errors.Is(err, sql.ErrNoRows):
+		jsonError(w, http.StatusNotFound, "not found")
+	default:
+		log.Printf("management error: %v", err)
+		jsonError(w, http.StatusInternalServerError, "database error")
+	}
+}
+
 func shortenHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	var body struct {
-		URL             string `json:"url"`
-		CustomCode      string `json:"custom_code"`
-		PublicEnabled   *bool  `json:"public_enabled"`
-		InternalEnabled *bool  `json:"internal_enabled"`
-		RedirectType    string `json:"redirect_type"`
-		OGTitle         string `json:"og_title"`
-		OGDescription   string `json:"og_description"`
-		OGImage         string `json:"og_image"`
-		Password        string `json:"password"`
-		Description     string `json:"description"`
-		ExpiresAt       string `json:"expires_at"`
-		MaxUses         int    `json:"max_uses"`
-	}
+	var body createURLInput
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || strings.TrimSpace(body.URL) == "" {
 		jsonError(w, http.StatusBadRequest, "invalid JSON or missing url field")
 		return
 	}
-
-	longURL := strings.TrimSpace(body.URL)
-	customCode := strings.TrimSpace(body.CustomCode)
-	publicEnabled := body.PublicEnabled == nil || *body.PublicEnabled
-	internalEnabled := body.InternalEnabled == nil || *body.InternalEnabled
-
-	if !publicEnabled && !internalEnabled {
-		jsonError(w, http.StatusBadRequest, "at least one link type (public_enabled or internal_enabled) must be true")
+	created, err := createManagedURL(body)
+	if err != nil {
+		managementErrorResponse(w, err)
 		return
-	}
-
-	redirectType := body.RedirectType
-	if redirectType != "meta" && redirectType != "js" {
-		redirectType = "redirect"
-	}
-	ogTitle, ogDescription, ogImage := body.OGTitle, body.OGDescription, body.OGImage
-	description := body.Description
-	passwordHash := ""
-	if body.Password != "" {
-		passwordHash = hashPassword(body.Password)
-	}
-	expiresAt := ""
-	if body.ExpiresAt != "" {
-		if _, err := time.Parse(time.RFC3339, body.ExpiresAt); err != nil {
-			jsonError(w, http.StatusBadRequest, "expires_at must be RFC3339 (e.g. 2026-03-01T00:00:00Z)")
-			return
-		}
-		expiresAt = body.ExpiresAt
-	}
-	maxUses := body.MaxUses
-	if maxUses < 0 {
-		maxUses = 0
-	}
-
-	var code string
-	if customCode != "" {
-		if !validCode.MatchString(customCode) {
-			jsonError(w, http.StatusBadRequest, "custom alias must be 1–32 chars: letters, numbers, hyphens, underscores")
-			return
-		}
-		if err := saveURL(customCode, longURL, publicEnabled, internalEnabled, redirectType, ogTitle, ogDescription, ogImage, passwordHash, description, expiresAt, maxUses); err != nil {
-			if strings.Contains(err.Error(), "UNIQUE constraint failed") {
-				jsonError(w, http.StatusConflict, fmt.Sprintf("alias '%s' is already taken", customCode))
-			} else {
-				jsonError(w, http.StatusInternalServerError, "database error")
-			}
-			return
-		}
-		code = customCode
-	} else {
-		for {
-			var err error
-			code, err = generateCode()
-			if err != nil {
-				jsonError(w, http.StatusInternalServerError, "internal error")
-				return
-			}
-			err = saveURL(code, longURL, publicEnabled, internalEnabled, redirectType, ogTitle, ogDescription, ogImage, passwordHash, description, expiresAt, maxUses)
-			if err == nil {
-				break
-			}
-			if !strings.Contains(err.Error(), "UNIQUE constraint failed") {
-				jsonError(w, http.StatusInternalServerError, "database error")
-				return
-			}
-		}
 	}
 
 	pb, _, _, ih, _ := cfg.snapshot()
 	ab := cfg.aliasBase()
 	resp := map[string]any{
-		"code":             code,
-		"long_url":         longURL,
-		"public_enabled":   publicEnabled,
-		"internal_enabled": internalEnabled,
-		"redirect_type":    redirectType,
-		"og_title":         ogTitle,
-		"og_description":   ogDescription,
-		"og_image":         ogImage,
-		"has_password":     passwordHash != "",
-		"description":      description,
-		"expires_at":       expiresAt,
-		"max_uses":         maxUses,
-		"use_count":        0,
+		"code":             created.Code,
+		"long_url":         created.LongURL,
+		"public_enabled":   created.PublicEnabled,
+		"internal_enabled": created.InternalEnabled,
+		"redirect_type":    created.RedirectType,
+		"og_title":         created.OGTitle,
+		"og_description":   created.OGDescription,
+		"og_image":         created.OGImage,
+		"has_password":     created.HasPassword,
+		"description":      created.Description,
+		"expires_at":       created.ExpiresAt,
+		"max_uses":         created.MaxUses,
+		"use_count":        created.UseCount,
 	}
-	if publicEnabled {
-		resp["short_url"] = fmt.Sprintf("%s/%s", pb, code)
+	if created.PublicEnabled {
+		resp["short_url"] = fmt.Sprintf("%s/%s", pb, created.Code)
 		if ab != "" {
-			resp["alias_url"] = fmt.Sprintf("%s/%s", ab, code)
+			resp["alias_url"] = fmt.Sprintf("%s/%s", ab, created.Code)
 		}
 	}
-	if internalEnabled {
+	if created.InternalEnabled {
 		// ih is stored as a full URL (e.g. "http://go"); strip the scheme so
 		// the internal link reads as "go/code" for display and clipboard.
-		resp["internal_url"] = fmt.Sprintf("%s/%s", hostOf(ih), code)
+		resp["internal_url"] = fmt.Sprintf("%s/%s", hostOf(ih), created.Code)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -331,7 +273,7 @@ func urlsHandler(w http.ResponseWriter, r *http.Request) {
 
 	switch r.Method {
 	case http.MethodDelete:
-		if err := deleteURL(code); err == sql.ErrNoRows {
+		if err := deleteManagedURL(code); err == sql.ErrNoRows {
 			jsonError(w, http.StatusNotFound, "not found")
 		} else if err != nil {
 			jsonError(w, http.StatusInternalServerError, "database error")
@@ -346,149 +288,14 @@ func urlsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func urlsPatchHandler(w http.ResponseWriter, r *http.Request, code string) {
-	var body struct {
-		NewCode         *string `json:"code"`
-		LongURL         *string `json:"long_url"`
-		PublicEnabled   *bool   `json:"public_enabled"`
-		InternalEnabled *bool   `json:"internal_enabled"`
-		RedirectType    *string `json:"redirect_type"`
-		OGTitle         *string `json:"og_title"`
-		OGDescription   *string `json:"og_description"`
-		OGImage         *string `json:"og_image"`
-		Password        *string `json:"password"`
-		Description     *string `json:"description"`
-		ExpiresAt       *string `json:"expires_at"`
-		MaxUses         *int    `json:"max_uses"`
-	}
+	var body updateURLInput
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		jsonError(w, http.StatusBadRequest, "invalid JSON")
 		return
 	}
-
-	rec, err := getRecord(code)
-	if err == sql.ErrNoRows {
-		jsonError(w, http.StatusNotFound, "not found")
-		return
-	} else if err != nil {
-		jsonError(w, http.StatusInternalServerError, "database error")
-		return
-	}
-
-	nextPub := rec.PublicEnabled
-	if body.PublicEnabled != nil {
-		nextPub = *body.PublicEnabled
-	}
-	nextInt := rec.InternalEnabled
-	if body.InternalEnabled != nil {
-		nextInt = *body.InternalEnabled
-	}
-
-	if body.LongURL != nil && strings.TrimSpace(*body.LongURL) == "" {
-		jsonError(w, http.StatusBadRequest, "long_url cannot be empty")
-		return
-	}
-
-	// Sanitize redirect_type
-	if body.RedirectType != nil && *body.RedirectType != "meta" && *body.RedirectType != "js" {
-		rt := "redirect"
-		body.RedirectType = &rt
-	}
-
-	// Validate expires_at if provided
-	if body.ExpiresAt != nil && *body.ExpiresAt != "" {
-		if _, err := time.Parse(time.RFC3339, *body.ExpiresAt); err != nil {
-			jsonError(w, http.StatusBadRequest, "expires_at must be RFC3339 (e.g. 2026-03-01T00:00:00Z)")
-			return
-		}
-	}
-
-	// Compute password hash if provided
-	var passwordHash *string
-	if body.Password != nil {
-		h := ""
-		if *body.Password != "" {
-			h = hashPassword(*body.Password)
-		}
-		passwordHash = &h
-	}
-
-	// Rename: INSERT with new code (preserving created_at) then DELETE old (code is PK)
-	if body.NewCode != nil {
-		newCode := strings.TrimSpace(*body.NewCode)
-		if !validCode.MatchString(newCode) {
-			jsonError(w, http.StatusBadRequest, "code must be 1–32 chars: letters, numbers, hyphens, underscores")
-			return
-		}
-		lu := rec.LongURL
-		if body.LongURL != nil {
-			lu = *body.LongURL
-		}
-		rt := rec.RedirectType
-		if body.RedirectType != nil {
-			rt = *body.RedirectType
-		}
-		ogt := rec.OGTitle
-		if body.OGTitle != nil {
-			ogt = *body.OGTitle
-		}
-		ogd := rec.OGDescription
-		if body.OGDescription != nil {
-			ogd = *body.OGDescription
-		}
-		ogi := rec.OGImage
-		if body.OGImage != nil {
-			ogi = *body.OGImage
-		}
-		opw := rec.PasswordHash
-		if passwordHash != nil {
-			opw = *passwordHash
-		}
-		odesc := rec.Description
-		if body.Description != nil {
-			odesc = *body.Description
-		}
-		oexp := rec.ExpiresAt
-		if body.ExpiresAt != nil {
-			oexp = *body.ExpiresAt
-		}
-		omaxu := rec.MaxUses
-		if body.MaxUses != nil {
-			omaxu = *body.MaxUses
-			if omaxu < 0 {
-				omaxu = 0
-			}
-		}
-		tx, err := db.Begin()
-		if err != nil {
-			jsonError(w, http.StatusInternalServerError, "database error")
-			return
-		}
-		defer tx.Rollback()
-		if _, err := tx.Exec(
-			"INSERT INTO urls (code, long_url, public_enabled, internal_enabled, redirect_type, og_title, og_description, og_image, password_hash, description, expires_at, max_uses, use_count, created_at) SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, created_at FROM urls WHERE code = ?",
-			newCode, lu, boolToInt(nextPub), boolToInt(nextInt), rt, ogt, ogd, ogi, opw, odesc, oexp, omaxu, code,
-		); err != nil {
-			if strings.Contains(err.Error(), "UNIQUE constraint failed") {
-				jsonError(w, http.StatusConflict, fmt.Sprintf("code '%s' is already taken", newCode))
-			} else {
-				jsonError(w, http.StatusInternalServerError, "database error")
-			}
-			return
-		}
-		if _, err := tx.Exec("DELETE FROM urls WHERE code = ?", code); err != nil {
-			jsonError(w, http.StatusInternalServerError, "database error")
-			return
-		}
-		if err := tx.Commit(); err != nil {
-			jsonError(w, http.StatusInternalServerError, "database error")
-			return
-		}
-		w.WriteHeader(http.StatusNoContent)
-		return
-	}
-
-	if err := updateURL(code, body.LongURL, body.PublicEnabled, body.InternalEnabled, body.RedirectType, body.OGTitle, body.OGDescription, body.OGImage, passwordHash, body.Description, body.ExpiresAt, body.MaxUses); err != nil {
-		jsonError(w, http.StatusInternalServerError, "database error")
+	body.Code = code
+	if _, err := updateManagedURL(body); err != nil {
+		managementErrorResponse(w, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -497,59 +304,19 @@ func urlsPatchHandler(w http.ResponseWriter, r *http.Request, code string) {
 func settingsHandler(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
-		pb, ph, uh, ih, ah := cfg.snapshot()
-		papiHost := cfg.publicAPIHostVal()
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]string{
-			"public_base":     pb,
-			"public_host":     ph,
-			"ui_host":         uh,
-			"internal_host":   ih,
-			"alias_host":      ah,
-			"public_api_host": papiHost,
-		})
+		json.NewEncoder(w).Encode(currentSettings())
 
 	case http.MethodPatch:
-		var body struct {
-			PublicBase    *string `json:"public_base"`
-			UIHost        *string `json:"ui_host"`
-			InternalHost  *string `json:"internal_host"`
-			AliasHost     *string `json:"alias_host"`
-			PublicAPIHost *string `json:"public_api_host"`
-		}
+		var body settingsUpdate
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			jsonError(w, http.StatusBadRequest, "invalid JSON")
 			return
 		}
-		pb, _, uh, ih, ah := cfg.snapshot()
-		papiHost := cfg.publicAPIHostVal()
-		if body.PublicBase != nil {
-			pb = *body.PublicBase
-		}
-		if body.UIHost != nil {
-			uh = *body.UIHost
-		}
-		if body.InternalHost != nil {
-			ih = *body.InternalHost
-		}
-		if body.AliasHost != nil {
-			ah = *body.AliasHost
-		}
-		if body.PublicAPIHost != nil {
-			papiHost = *body.PublicAPIHost
-		}
-		cfg.apply(pb, uh, ih, ah, papiHost)
-		for k, v := range map[string]string{
-			"public_base":     pb,
-			"ui_host":         uh,
-			"internal_host":   ih,
-			"alias_host":      ah,
-			"public_api_host": papiHost,
-		} {
-			if err := saveSetting(k, v); err != nil {
-				jsonError(w, http.StatusInternalServerError, "failed to save setting")
-				return
-			}
+		if _, err := updateSettings(body); err != nil {
+			log.Printf("settings update error: %v", err)
+			jsonError(w, http.StatusInternalServerError, "failed to save setting")
+			return
 		}
 		w.WriteHeader(http.StatusNoContent)
 
@@ -708,7 +475,7 @@ func doRedirect(w http.ResponseWriter, r *http.Request, code string, internal bo
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		tmpl.Execute(w, struct {
 			LongURL, ShortURL, OGTitle, OGDescription, OGImage, Code, PassURL string
-			HasPassword                                                        bool
+			HasPassword                                                       bool
 		}{rec.LongURL, shortURL, rec.OGTitle, rec.OGDescription, rec.OGImage, code, passURL, rec.PasswordHash != ""})
 		return
 	}

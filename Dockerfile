@@ -8,6 +8,6 @@ VOLUME ["/data"]
 
 ENV DB_FILE=/data/urls.db
 
-EXPOSE 80
+EXPOSE 80 8081
 
 ENTRYPOINT ["/go"]

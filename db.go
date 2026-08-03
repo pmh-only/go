@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/rand"
 	"database/sql"
 	"fmt"
@@ -176,7 +177,11 @@ func getRecord(code string) (urlRecord, error) {
 }
 
 func getAllURLs() ([]URLRow, error) {
-	rows, err := db.Query(
+	return getAllURLsContext(context.Background())
+}
+
+func getAllURLsContext(ctx context.Context) ([]URLRow, error) {
+	rows, err := db.QueryContext(ctx,
 		`SELECT code, long_url, public_enabled, internal_enabled, redirect_type, og_title, og_description, og_image, password_hash, description, expires_at, max_uses, use_count, created_at
 		 FROM urls ORDER BY created_at DESC`,
 	)
@@ -187,6 +192,9 @@ func getAllURLs() ([]URLRow, error) {
 
 	var urls []URLRow
 	for rows.Next() {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		var r URLRow
 		var pub, int_ int
 		var passwordHash string
@@ -205,6 +213,29 @@ func getAllURLs() ([]URLRow, error) {
 		urls = append(urls, r)
 	}
 	return urls, rows.Err()
+}
+
+func getURLRow(code string) (URLRow, error) {
+	var r URLRow
+	var pub, internal int
+	var passwordHash string
+	err := db.QueryRow(
+		`SELECT code, long_url, public_enabled, internal_enabled, redirect_type, og_title, og_description, og_image, password_hash, description, expires_at, max_uses, use_count, created_at
+		 FROM urls WHERE code = ?`, code,
+	).Scan(&r.Code, &r.LongURL, &pub, &internal, &r.RedirectType, &r.OGTitle, &r.OGDescription, &r.OGImage, &passwordHash, &r.Description, &r.ExpiresAt, &r.MaxUses, &r.UseCount, &r.CreatedAt)
+	if err != nil {
+		return URLRow{}, err
+	}
+	r.PublicEnabled = pub == 1
+	r.InternalEnabled = internal == 1
+	r.HasPassword = passwordHash != ""
+	if r.ExpiresAt != "" {
+		if expiresAt, err := time.Parse(time.RFC3339, r.ExpiresAt); err == nil {
+			r.IsExpired = time.Now().UTC().After(expiresAt)
+		}
+	}
+	r.UsesExhausted = r.MaxUses > 0 && r.UseCount >= r.MaxUses
+	return r, nil
 }
 
 func updateURL(code string, longURL *string, publicEnabled, internalEnabled *bool, redirectType, ogTitle, ogDescription, ogImage, passwordHash, description, expiresAt *string, maxUses *int) error {
